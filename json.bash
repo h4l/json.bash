@@ -6,6 +6,8 @@ if [[ $0 == "${BASH_SOURCE[0]}" ]]; then
   echo "json.bash: this file must be sourced, not executed directly" >&2; exit 1
 fi
 
+# TODO: make a version of this for integers and other atomic types
+
 # Encode the positional arguments as JSON strings, joined by commas.
 function encode_json_strings() {
   strings=("${@//$'\\'/$'\\\\'}")             # escape \
@@ -22,6 +24,39 @@ function encode_json_strings() {
   done
   echo -n "$joined"
 }
+
+# Encode arguments as JSON objects or arrays and print to stdout.
+# 
+# Each argument is an entry in the JSON object or array created by the call.
+# Arguments use the syntax:
+# 
+# Examples:
+#   json name=Hal  # {"name":"Hal"}
+#   name="Hal" json name=@name  # {"name":"Hal"}
+#   prop=name name="Hal" json @prop=@name  # {"name":"Hal"}
+#   json Length=42 length:string=42  # {"Length":42,length:"42"}
+#   json active=true stopped_date=null name:string=null  # {"active":true,"stopped_date":null,"name":"null"}
+#   json entry:object={"name":"Bob"} # {"entry":{"name":"Bob"}}
+#   data=(4 8 16); json numbers:number[]=@data # {"numbers":[4,8,16]}
+#   json @bar:string@foo bar:string="asdfsd"
+#
+#   argument     = [ key ] [ type ] [ value ]
+#   value        = inline-value | ref-value
+#   key          = inline-key | ref-key
+# 
+#   type         = ":" ( "string" | "number" | "bool"
+#                      | "null" | "raw" | "auto" ) [ "[]" ]
+#
+#   inline-key   = /^[^:=@]*/
+#   inline-value = /^=.*/
+#   ref-key      = /^@\w+/
+#   ref-value    = /^@=\w+/
+# 
+
+# TODO: should the standalone-value rule be the value for objects as well as
+# arrays? i.e. `json foo` is {"": "foo"}  or ["foo"]. For objects the key is the
+# value if nothing is provided. Or the key is the var name if @ is used.
+# foo=123 json_type=auto json @foo :string=sdfs # {"foo":123,"foo":"123"}
 
 function json() {
   local _var _type _key _val _arg_pattern _number_pattern _json_type _json_val _result_format
