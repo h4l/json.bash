@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 shopt -s extglob
 
-_json_bash_number_pattern='^-?(0|[1-9][0-9]*)(\.[0-9]*)?([eE][+-]?[0-9]+)?$'
+_json_bash_number_pattern='-?(0|[1-9][0-9]*)(\.[0-9]*)?([eE][+-]?[0-9]+)?'
+_json_bash_auto_pattern="\"(null|true|false|${_json_bash_number_pattern:?})\""
 _json_bash_number_glob='?([-])@(0|[1-9]*([0-9]))?([.]+([0-9]))?([eE]?([+-])+([0-9]))'
 _json_bash_auto_glob="\"@(true|false|null|$_json_bash_number_glob)\""
 
@@ -34,7 +35,7 @@ function _encode_json_values() {
 }
 
 function encode_json_numbers() {
-  type_name=numbers value_pattern=${_json_bash_number_pattern:1:-1} _encode_json_values "$@"
+  type_name=numbers value_pattern=${_json_bash_number_pattern:?} _encode_json_values "$@"
 }
 
 function encode_json_bools() {
@@ -46,43 +47,18 @@ function encode_json_nulls() {
 }
 
 function encode_json_autos() {
-  local strings marked_autos chunks leading_autos match_length auto_values
-  local many_marker_glob='+(,_\\_)' many_auto_glob="+(,$_json_bash_auto_glob)"
   if [[ $# == 0 ]]; then return; fi
   if [[ $# == 1 ]]; then
-    if [[ \"$1\" == $_json_bash_auto_glob ]]; then echo -n "$1"
+    if [[ \"$1\" =~ $_json_bash_auto_pattern ]]; then echo -n "$1"
     else encode_json_strings "$1"; fi
     return
   fi
-  # Bash 5.2 supports & match references in substitutions, which would this much
-  # simpler. But 5.2 is not yet widely available, so I've come up with this
-  # hack to avoid checking every element in a loop. As with other encode
-  # functions, we aim to minimise bash-level operations by processing multiple
-  # elements at once.
-  strings=,$(encode_json_strings "$@")  # add a leading , for matching consistency
-  # Replace non-string values with "_\_". This sequence cannot occur in a string.
-  # Then iteratively consume prefix sequences of string or non-string values.
-  marked_autos=${strings//$_json_bash_auto_glob/$'_\\_'}
-
-  chunks=()
-  while [[ ${#marked_autos} != 0 ]]; do
-    leading_autos=${marked_autos#*_\\_} # Strip all leading string values
-    match_length=$(( ${#marked_autos} - ${#leading_autos} - 4 ))
-    if [[ $match_length == -4 ]]; then chunks+=("$leading_autos"); break; fi
-    if (( $match_length > 0 )); then
-      chunks+=("${strings:0:$match_length}")
-      strings=${strings:$match_length} # drop the strings we just matched
-    fi
-    leading_strings=${strings##$many_auto_glob} # strip all leading auto values
-    auto_values=${strings:0:(( ${#strings} - ${#leading_strings} ))}
-    auto_values=${auto_values//\"/} # un-quote the non-string values
-    chunks+=("$auto_values")
-    # strip the markers for autos we just matched
-    marked_autos=${leading_autos#$many_marker_glob} 
-    strings=$leading_strings
-  done
-  chunks[0]="${chunks[0]#,}" # remove the leading , we added 
-  local IFS; IFS=""; echo -n "${chunks[*]}"
+  
+  # Bash 5.2 supports & match references in substitutions, which would make it
+  # easy to do this match & substitution in-process (without looping). But 5.2
+  # is not yet widely available, so we'll fork a sed process to do this instead.
+  encode_json_strings "$@" | sed -Ee "s/${_json_bash_auto_pattern:?}/\1/g"
+  [[ "${PIPESTATUS[*]}" == "0 0" ]] || return 1
 }
 
 function encode_json_raws() {
