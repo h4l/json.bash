@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
-shopt -s extglob
 
+_json_bash_arg_pattern='^(@(\w+)|([^:=@]+))?(:(auto|bool|null|number|raw|string)(\[\])?)?(@=(\w+)|=(.*))?$'
 _json_bash_number_pattern='-?(0|[1-9][0-9]*)(\.[0-9]*)?([eE][+-]?[0-9]+)?'
 _json_bash_auto_pattern="\"(null|true|false|${_json_bash_number_pattern:?})\""
-_json_bash_number_glob='?([-])@(0|[1-9]*([0-9]))?([.]+([0-9]))?([eE]?([+-])+([0-9]))'
-_json_bash_auto_glob="\"@(true|false|null|$_json_bash_number_glob)\""
 
 # Encode the positional arguments as JSON strings, joined by commas.
 function encode_json_strings() {
@@ -93,17 +91,8 @@ function encode_json_raws() {
 #   ref-key      = /^@\w+/
 #   ref-value    = /^@=\w+/
 # 
-
-# TODO: should the standalone-value rule be the value for objects as well as
-# arrays? i.e. `json foo` is {"": "foo"}  or ["foo"]. For objects the key is the
-# value if nothing is provided. Or the key is the var name if @ is used.
-# foo=123 json_type=auto json @foo :string=sdfs # {"foo":123,"foo":"123"}
-
 function json() {
-  # TODO: we don't need _ prefixes
-  local _type _key _val _arg_pattern _number_pattern _json_type _json_val _result_format
-  _arg_pattern='^(@(\w+)|([^:=@]+))?(:(auto|bool|null|number|raw|string)(\[\])?)?(@=(\w+)|=(.*))?$'
-
+  local _json_type array encode_fn entries json_val key type value
   entries=()
   _json_type=${json_type:-object}
 
@@ -113,40 +102,40 @@ function json() {
   }
 
   for arg in "$@"; do
-    if [[ $arg =~ $_arg_pattern ]]; then
-      _type=${BASH_REMATCH[5]:-${json_value_type:-string}}
-      _array=${BASH_REMATCH[6]/[]/true}
+    if [[ $arg =~ $_json_bash_arg_pattern ]]; then
+      type=${BASH_REMATCH[5]:-${json_value_type:-string}}
+      array=${BASH_REMATCH[6]/[]/true}
       # If no value is set, the key is the value. 
       if [[ ${BASH_REMATCH[7]} == "" ]]; then   # no value - value is key
         if [[ ${BASH_REMATCH[2]} != "" ]]; then # key is a ref
-          _key="${BASH_REMATCH[2]}"             # key is ref name
-          local -n _value="${BASH_REMATCH[2]}"  # value is the key's reference
-        else _key=${BASH_REMATCH[3]}; _value=${BASH_REMATCH[3]}; fi
+          key="${BASH_REMATCH[2]}"              # key is ref name
+          local -n value="${BASH_REMATCH[2]}"   # value is the key's reference
+        else key=${BASH_REMATCH[3]}; value=${BASH_REMATCH[3]}; fi
       else
-        if [[ ${BASH_REMATCH[2]} != "" ]]; then local -n _key="${BASH_REMATCH[2]}"
-        else _key=${BASH_REMATCH[3]}; fi
-        if [[ ${BASH_REMATCH[8]} != "" ]]; then local -n _value="${BASH_REMATCH[8]}"
-        else _value=${BASH_REMATCH[9]}; fi
+        if [[ ${BASH_REMATCH[2]} != "" ]]; then local -n key="${BASH_REMATCH[2]}"
+        else key=${BASH_REMATCH[3]}; fi
+        if [[ ${BASH_REMATCH[8]} != "" ]]; then local -n value="${BASH_REMATCH[8]}"
+        else value=${BASH_REMATCH[9]}; fi
       fi
     else
       echo "json(): invalid argument: '$arg'" >&2; return 1;
     fi
     
     # Handle the common object string value case a little more efficiently
-    if [[ $_type == string && $_json_type == object && $_array == false ]]; then
-      entries+=("$(join=: encode_json_strings "$_key" "$_value")") || return 1
+    if [[ $type == string && $_json_type == object && $array == false ]]; then
+      entries+=("$(join=: encode_json_strings "$key" "$value")") || return 1
       continue
     fi
 
-    _encode_fn="encode_json_${_type:?}s"
-    if [[ $_array == true ]]; then _json_val="[$("$_encode_fn" "${_value[@]}")]"
-    else _json_val=$("$_encode_fn" "${_value}"); fi
-    [[ $? == 0 ]] || { echo "json(): failed to encode ${arg@A} ${_value@A}" >&2; return 1; }
+    encode_fn="encode_json_${type:?}s"
+    if [[ $array == true ]]; then json_val="[$("$encode_fn" "${value[@]}")]"
+    else json_val=$("$encode_fn" "${value}"); fi
+    [[ $? == 0 ]] || { echo "json(): failed to encode ${arg@A} ${value@A}" >&2; return 1; }
 
     if [[ $_json_type == object ]]; then
-      entries+=("$(encode_json_strings "$_key"):${_json_val:?}")
+      entries+=("$(encode_json_strings "$key"):${json_val:?}")
     else
-      entries+=("${_json_val:?}")
+      entries+=("${json_val:?}")
     fi
   done
 
