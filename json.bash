@@ -88,12 +88,15 @@ function encode_json_raws() {
 #
 #   inline-key   = /^[^:=@]*/
 #   inline-value = /^=.*/
-#   ref-key      = /^@\w+/
-#   ref-value    = /^@=\w+/
+#   ref-key      = "@" ref-name
+#   ref-value    = "@=" ref-name
+#   ref-name     = /^[a-zA-Z0-9]\w*/
 # 
 function json() {
-  local _json_type array encode_fn entries json_val key type value
-  entries=()
+  # vars referenced by arguments cannot start with _, so we prefix our own vars
+  # with _ to prevent args referencing locals.
+  local _json_type _array _encode_fn _entries _json_val _key _type _value
+  _entries=()
   _json_type=${json_type:-object}
 
   [[ $_json_type == object || $_json_type == array ]] || {
@@ -103,45 +106,49 @@ function json() {
 
   for arg in "$@"; do
     if [[ $arg =~ $_json_bash_arg_pattern ]]; then
-      type=${BASH_REMATCH[5]:-${json_value_type:-string}}
-      array=${BASH_REMATCH[6]/[]/true}
+      _type=${BASH_REMATCH[5]:-${json_value_type:-string}}
+      _array=${BASH_REMATCH[6]/[]/true}
       # If no value is set, the key is the value. 
       if [[ ${BASH_REMATCH[7]} == "" ]]; then   # no value - value is key
         if [[ ${BASH_REMATCH[2]} != "" ]]; then # key is a ref
-          key="${BASH_REMATCH[2]}"              # key is ref name
-          local -n value="${BASH_REMATCH[2]}"   # value is the key's reference
-        else key=${BASH_REMATCH[3]}; value=${BASH_REMATCH[3]}; fi
+          _key="${BASH_REMATCH[2]}"              # key is ref name
+          local -n _value="${BASH_REMATCH[2]}"   # value is the key's reference
+        else _key=${BASH_REMATCH[3]}; _value=${BASH_REMATCH[3]}; fi
       else
-        if [[ ${BASH_REMATCH[2]} != "" ]]; then local -n key="${BASH_REMATCH[2]}"
-        else key=${BASH_REMATCH[3]}; fi
-        if [[ ${BASH_REMATCH[8]} != "" ]]; then local -n value="${BASH_REMATCH[8]}"
-        else value=${BASH_REMATCH[9]}; fi
+        if [[ ${BASH_REMATCH[2]} != "" ]]; then local -n _key="${BASH_REMATCH[2]}"
+        else _key=${BASH_REMATCH[3]}; fi
+        if [[ ${BASH_REMATCH[8]} != "" ]]; then local -n _value="${BASH_REMATCH[8]}"
+        else _value=${BASH_REMATCH[9]}; fi
       fi
     else
       echo "json(): invalid argument: '$arg'" >&2; return 1;
     fi
     
     # Handle the common object string value case a little more efficiently
-    if [[ $type == string && $_json_type == object && $array == false ]]; then
-      entries+=("$(join=: encode_json_strings "$key" "$value")") || return 1
+    if [[ $_type == string && $_json_type == object && $_array == false ]]; then
+      _entries+=("$(join=: encode_json_strings "$_key" "$_value")") || return 1
       continue
     fi
 
-    encode_fn="encode_json_${type:?}s"
-    if [[ $array == true ]]; then json_val="[$("$encode_fn" "${value[@]}")]"
-    else json_val=$("$encode_fn" "${value}"); fi
-    [[ $? == 0 ]] || { echo "json(): failed to encode ${arg@A} ${value@A}" >&2; return 1; }
+    _encode_fn="encode_json_${_type:?}s"
+    if [[ $_array == true ]]; then _json_val="[$("$_encode_fn" "${_value[@]}")]"
+    else _json_val=$("$_encode_fn" "${_value}"); fi
+    [[ $? == 0 ]] || { echo "json(): failed to encode ${arg@A} ${_value@A}" >&2; return 1; }
 
     if [[ $_json_type == object ]]; then
-      entries+=("$(encode_json_strings "$key"):${json_val:?}")
+      _entries+=("$(encode_json_strings "$_key"):${_json_val:?}")
     else
-      entries+=("${json_val:?}")
+      _entries+=("${_json_val:?}")
     fi
   done
 
   local IFS; IFS=,;
-  if   [[ $_json_type == object ]]; then echo -n "{${entries[*]}}"
-  else echo -n "[${entries[*]}]"; fi
+  if   [[ $_json_type == object ]]; then echo -n "{${_entries[*]}}"
+  else echo -n "[${_entries[*]}]"; fi
+}
+
+function json.array() {
+  json_type=array json "$@"
 }
 
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then # we're being executed directly
