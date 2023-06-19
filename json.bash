@@ -1,10 +1,5 @@
-# shellcheck shell=bash
-# set -euo pipefail
+#!/usr/bin/env bash
 shopt -s extglob
-
-if [[ $0 == "${BASH_SOURCE[0]}" ]]; then
-  echo "json.bash: this file must be sourced, not executed directly" >&2; exit 1
-fi
 
 _json_bash_number_pattern='^-?(0|[1-9][0-9]*)(\.[0-9]*)?([eE][+-]?[0-9]+)?$'
 _json_bash_number_glob='?([-])@(0|[1-9]*([0-9]))?([.]+([0-9]))?([eE]?([+-])+([0-9]))'
@@ -183,3 +178,7 @@ function json() {
   if   [[ $_json_type == object ]]; then echo -n "{${entries[*]}}"
   else echo -n "[${entries[*]}]"; fi
 }
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then # we're being executed directly
+  json "$@" && printf '\n' || exit $?
+fi
