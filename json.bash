@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-_json_bash_arg_pattern='^(@(\w+)|([^:=@]+))?(:(auto|bool|null|number|raw|string)(\[\])?)?(@=(\w+)|=(.*))?$'
+_json_bash_arg_pattern='^(@(\w+)|([^:=@-][^:=@]*))?(:(auto|bool|false|null|number|raw|string|true)(\[\])?)?(@=(\w+)|=(.*))?$'
 _json_bash_number_pattern='-?(0|[1-9][0-9]*)(\.[0-9]*)?([eE][+-]?[0-9]+)?'
 _json_bash_auto_pattern="\"(null|true|false|${_json_bash_number_pattern:?})\""
 
@@ -40,6 +40,14 @@ function encode_json_bools() {
   type_name=bools value_pattern="true|false" _encode_json_values "$@"
 }
 
+function encode_json_falses() {
+  type_name=false value_pattern="false" _encode_json_values "$@"
+}
+
+function encode_json_trues() {
+  type_name=true value_pattern="true" _encode_json_values "$@"
+}
+
 function encode_json_nulls() {
   type_name=nulls value_pattern="null" _encode_json_values "$@"
 }
@@ -51,7 +59,7 @@ function encode_json_autos() {
     else encode_json_strings "$1"; fi
     return
   fi
-  
+
   # Bash 5.2 supports & match references in substitutions, which would make it
   # easy to do this match & substitution in-process (without looping). But 5.2
   # is not yet widely available, so we'll fork a sed process to do this instead.
@@ -65,10 +73,10 @@ function encode_json_raws() {
 }
 
 # Encode arguments as JSON objects or arrays and print to stdout.
-# 
+#
 # Each argument is an entry in the JSON object or array created by the call.
 # Arguments use the syntax:
-# 
+#
 # Examples:
 #   json name=Hal  # {"name":"Hal"}
 #   name="Hal" json name=@name  # {"name":"Hal"}
@@ -82,50 +90,57 @@ function encode_json_raws() {
 #   argument     = [ key ] [ type ] [ value ]
 #   value        = inline-value | ref-value
 #   key          = inline-key | ref-key
-# 
-#   type         = ":" ( "string" | "number" | "bool"
+#
+#   type         = ":" ( "string" | "number" | "bool" | "true" | "false"
 #                      | "null" | "raw" | "auto" ) [ "[]" ]
 #
-#   inline-key   = /^[^:=@]*/
+#   inline-key   = /^([^:=@-][^:=@]*)?/
 #   inline-value = /^=.*/
 #   ref-key      = "@" ref-name
 #   ref-value    = "@=" ref-name
 #   ref-name     = /^[a-zA-Z0-9]\w*/
-# 
+#
 function json() {
   # vars referenced by arguments cannot start with _, so we prefix our own vars
   # with _ to prevent args referencing locals.
-  local _json_type _array _encode_fn _entries _json_val _key _type _value
+  local _json_return _array _encode_fn _entries _json_val _key _type _value _match
   _entries=()
-  _json_type=${json_type:-object}
+  _json_return=${json_return:-object}
 
-  [[ $_json_type == object || $_json_type == array ]] || {
-    echo "json(): json_type must be object or array or empty: '$_json_type'"
+  [[ $_json_return == object || $_json_return == array ]] || {
+    echo "json(): json_return must be object or array or empty: '$_json_return'"
     return 1
   }
 
   for arg in "$@"; do
     if [[ $arg =~ $_json_bash_arg_pattern ]]; then
-      _type=${BASH_REMATCH[5]:-${json_value_type:-string}}
-      _array=${BASH_REMATCH[6]/[]/true}
-      # If no value is set, the key is the value. 
-      if [[ ${BASH_REMATCH[7]} == "" ]]; then   # no value - value is key
-        if [[ ${BASH_REMATCH[2]} != "" ]]; then # key is a ref
-          _key="${BASH_REMATCH[2]}"              # key is ref name
-          local -n _value="${BASH_REMATCH[2]}"   # value is the key's reference
-        else _key=${BASH_REMATCH[3]}; _value=${BASH_REMATCH[3]}; fi
-      else
-        if [[ ${BASH_REMATCH[2]} != "" ]]; then local -n _key="${BASH_REMATCH[2]}"
-        else _key=${BASH_REMATCH[3]}; fi
-        if [[ ${BASH_REMATCH[8]} != "" ]]; then local -n _value="${BASH_REMATCH[8]}"
-        else _value=${BASH_REMATCH[9]}; fi
+      unset -n _key _value
+      _match=("${BASH_REMATCH[@]}")
+      _type=${_match[5]:-${json_type:-string}}
+      _array=${_match[6]/[]/true}
+      # If no value is set, provide a default
+      if [[ ${_match[7]} == "" ]]; then  # No value is set
+        if [[ $_type == true|| $_type == false || $_type == null ]]; then
+          _match[9]=$_type  # inline value is the type
+          if [[ $_type != null ]]; then _type=bool; fi # use the bool encode fn
+        elif [[ ${_match[2]} != "" ]]; then # key is a ref
+          _match[8]=${_match[2]} # use key ref for value ref
+          _match[3]=${_match[2]} # use key ref name for key
+          _match[2]=
+        else # use inline key value as inline value
+          _match[9]=${_match[3]}
+        fi
       fi
+      if [[ ${_match[2]} != "" ]]; then local -n _key="${_match[2]}"
+      else _key=${_match[3]}; fi
+      if [[ ${_match[8]} != "" ]]; then local -n _value="${_match[8]}"
+      else _value=${_match[9]}; fi
     else
       echo "json(): invalid argument: '$arg'" >&2; return 1;
     fi
-    
+
     # Handle the common object string value case a little more efficiently
-    if [[ $_type == string && $_json_type == object && $_array == false ]]; then
+    if [[ $_type == string && $_json_return == object && $_array == false ]]; then
       _entries+=("$(join=: encode_json_strings "$_key" "$_value")") || return 1
       continue
     fi
@@ -135,20 +150,24 @@ function json() {
     else _json_val=$("$_encode_fn" "${_value}"); fi
     [[ $? == 0 ]] || { echo "json(): failed to encode ${arg@A} ${_value@A}" >&2; return 1; }
 
-    if [[ $_json_type == object ]]; then
-      _entries+=("$(encode_json_strings "$_key"):${_json_val:?}")
+    if [[ $_json_return == object ]]; then
+      _entries+=("$(encode_json_strings "$_key"):${_json_val:?"json(): JSON value of ${arg@A} was empty"}")
     else
-      _entries+=("${_json_val:?}")
+      _entries+=("${_json_val:?"json(): JSON value of ${arg@A} was empty"}")
     fi
   done
 
   local IFS; IFS=,;
-  if   [[ $_json_type == object ]]; then echo "{${_entries[*]}}"
+  if   [[ $_json_return == object ]]; then echo "{${_entries[*]}}"
   else echo "[${_entries[*]}]"; fi
 }
 
+function json.object() {
+  json_return=object json "$@"
+}
+
 function json.array() {
-  json_type=array json "$@"
+  json_return=array json "$@"
 }
 
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then # we're being executed directly
