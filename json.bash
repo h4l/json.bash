@@ -18,7 +18,7 @@ function encode_json_strings() {
     escape=$(printf '\\%s' "${escapes[$hex]:-u00$hex}")
     joined=${joined//$literal/$escape}
   done
-  echo -n "$joined"
+  echo "$joined"
 }
 
 function _encode_json_values() {
@@ -29,7 +29,7 @@ function _encode_json_values() {
     echo "encode_json_${type_name:?}(): not all inputs are ${type_name:?}:$(printf " '%s'" "$@")" >&2
     return 1
   fi
-  echo -n "$joined"
+  echo "$joined"
 }
 
 function encode_json_numbers() {
@@ -61,7 +61,7 @@ function encode_json_autos() {
 
 function encode_json_raws() {
   # Caller is responsible for ensuring values are valid JSON!
-  local IFS; IFS=${join:-,}; echo -n "$*";  # join by ,
+  local IFS; IFS=${join:-,}; echo "$*";  # join by ,
 }
 
 # Encode arguments as JSON objects or arrays and print to stdout.
@@ -143,8 +143,8 @@ function json() {
   done
 
   local IFS; IFS=,;
-  if   [[ $_json_type == object ]]; then echo -n "{${_entries[*]}}"
-  else echo -n "[${_entries[*]}]"; fi
+  if   [[ $_json_type == object ]]; then echo "{${_entries[*]}}"
+  else echo "[${_entries[*]}]"; fi
 }
 
 function json.array() {
@@ -152,5 +152,5 @@ function json.array() {
 }
 
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then # we're being executed directly
-  json "$@" && printf '\n' || exit $?
+  json "$@" || exit $?
 fi
