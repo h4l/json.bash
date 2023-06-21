@@ -26,7 +26,7 @@ function encode_json_strings() {
     escape=${_json_bash_escapes[$literal]:?"no escape for ${literal@A}"}
     joined=${joined//$literal/$escape}
   done
-  echo "$joined"
+  echo -n "$joined"
 }
 
 function _encode_json_values() {
@@ -37,7 +37,7 @@ function _encode_json_values() {
     echo "encode_json_${type_name:?}(): not all inputs are ${type_name:?}:$(printf " '%s'" "$@")" >&2
     return 1
   fi
-  echo "$joined"
+  echo -n "$joined"
 }
 
 function encode_json_numbers() {
@@ -77,8 +77,11 @@ function encode_json_autos() {
 }
 
 function encode_json_raws() {
+  if [[ $# == 1 && $1 == "" ]]; then
+    echo "json.bash: raw JSON value is empty" >&2; return 1
+  fi
   # Caller is responsible for ensuring values are valid JSON!
-  local IFS; IFS=${join:-,}; echo "$*";  # join by ,
+  local IFS; IFS=${join:-,}; echo -n "$*";  # join by ,
 }
 
 # Encode arguments as JSON objects or arrays and print to stdout.
@@ -113,13 +116,17 @@ function json() {
   # vars referenced by arguments cannot start with _, so we prefix our own vars
   # with _ to prevent args referencing locals.
   local _json_return _array _encode_fn _entries _json_val _key _type _value _match
-  _entries=()
   _json_return=${json_return:-object}
 
   [[ $_json_return == object || $_json_return == array ]] || {
     echo "json(): json_return must be object or array or empty: '$_json_return'"
     return 1
   }
+
+  if [[ $_json_return == object ]];
+  then echo -n '{'; local _json_end='}'
+  else echo -n '['; local _json_end=']'; fi
+  local _json_separator=''
 
   for arg in "$@"; do
     if [[ $arg =~ $_json_bash_arg_pattern ]]; then
@@ -148,27 +155,26 @@ function json() {
       echo "json(): invalid argument: '$arg'" >&2; return 1;
     fi
 
+    echo -n "${_json_separator}"; _json_separator=,
     # Handle the common object string value case a little more efficiently
     if [[ $_type == string && $_json_return == object && $_array == false ]]; then
-      _entries+=("$(join=: encode_json_strings "$_key" "$_value")") || return 1
-      continue
-    fi
-
-    _encode_fn="encode_json_${_type:?}s"
-    if [[ $_array == true ]]; then _json_val="[$("$_encode_fn" "${_value[@]}")]"
-    else _json_val=$("$_encode_fn" "${_value}"); fi
-    [[ $? == 0 ]] || { echo "json(): failed to encode ${arg@A} ${_value@A}" >&2; return 1; }
-
-    if [[ $_json_return == object ]]; then
-      _entries+=("$(encode_json_strings "$_key"):${_json_val:?"json(): JSON value of ${arg@A} was empty"}")
+      join=: encode_json_strings "$_key" "$_value" || return 1
     else
-      _entries+=("${_json_val:?"json(): JSON value of ${arg@A} was empty"}")
+      if [[ $_json_return == object ]]; then
+        encode_json_strings "$_key" && echo -n ':' || return 1
+      fi
+
+      _encode_fn="encode_json_${_type:?}s"
+      local _status=0
+      if [[ $_array == true ]]; then
+        echo -n '[' && "$_encode_fn" "${_value[@]}" && echo -n ']' || _status=$?
+      else "$_encode_fn" "${_value}" || _status=$?; fi
+      [[ $_status == 0 ]] \
+        || { echo "json(): $status $_encode_fn: failed to encode ${arg@A} ${_value@A}" >&2; return 1; }
+
     fi
   done
-
-  local IFS; IFS=,;
-  if   [[ $_json_return == object ]]; then echo "{${_entries[*]}}"
-  else echo "[${_entries[*]}]"; fi
+  echo -n "${_json_end:?}"
 }
 
 function json.object() {

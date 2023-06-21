@@ -286,7 +286,10 @@ expected: $expected
 
   # Empty raw values are errors
   run json a:raw=
-  [[ $status == 1 && $output =~ "JSON value of arg='a:raw=' was empty" ]]
+  [[ $status == 1 && $output =~ "raw JSON value is empty" ]]
+  # And a raw array containing the empty string is an error
+  run json a:raw[]=
+  [[ $status == 1 && $output =~ "raw JSON value is empty" ]]
 
   # Invalid typed values are errors
   run json a:number=a
@@ -315,8 +318,6 @@ expected: $expected
   raws=('' '')
   [[ $(json a:raw[]@=raws) == '{"a":[,]}' ]]
 
-  # Although single empty raw values are errors, an empty raw array is OK
-  json a:raw[]= | equals_json '{"a": []}'
 
   # invalid raw values are not checked for or detected
   [[ $(json a:raw=']  ') == '{"a":]  }' ]]
