@@ -75,6 +75,10 @@ if actual != expected:
   [[ $(encode_json_autos true) == 'true' ]]
   [[ $(encode_json_autos true hi 42) == 'true,"hi",42' ]]
   [[ $(encode_json_autos true,false foo bar 42) == '"true,false","foo","bar",42' ]]
+  [[ $(encode_json_autos '"42') == '"\"42"' ]]
+  [[ $(encode_json_autos ',"42') == '",\"42"' ]]
+  [[ $(encode_json_autos foo '"42' foo '"42') == '"foo","\"42","foo","\"42"' ]]
+  [[ $(encode_json_autos foo ',"42' foo ',"42') == '"foo",",\"42","foo",",\"42"' ]]
 }
 
 # Assert JSON on stdin matches JSON given as the first argument.

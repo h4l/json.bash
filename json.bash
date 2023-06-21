@@ -55,7 +55,7 @@ function encode_json_nulls() {
 function encode_json_autos() {
   if [[ $# == 0 ]]; then return; fi
   if [[ $# == 1 ]]; then
-    if [[ \"$1\" =~ $_json_bash_auto_pattern ]]; then echo -n "$1"
+    if [[ \"$1\" =~ ^$_json_bash_auto_pattern$ ]]; then echo -n "$1"
     else encode_json_strings "$1"; fi
     return
   fi
@@ -63,8 +63,9 @@ function encode_json_autos() {
   # Bash 5.2 supports & match references in substitutions, which would make it
   # easy to do this match & substitution in-process (without looping). But 5.2
   # is not yet widely available, so we'll fork a sed process to do this instead.
-  encode_json_strings "$@" | sed -Ee "s/${_json_bash_auto_pattern:?}/\1/g"
-  [[ "${PIPESTATUS[*]}" == "0 0" ]] || return 1
+  sed <<<",$(encode_json_strings "$@")" -Ee "s/,${_json_bash_auto_pattern:?}/,\1/g" \
+    | tail -c +2  # remove the , we added at the start
+  [[ "${PIPESTATUS[*]}" == "0 0 0" ]] || return 1
 }
 
 function encode_json_raws() {
