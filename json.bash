@@ -18,8 +18,7 @@ declare -gA _json_bash_escapes=(
 # If $out is set, arguments are appended to the array variable $out. Otherwise
 # arguments go directly to stdout, without any separator between each value.
 function json.bash.buffer_output() {
-  if [[ "${out:-}" == "" ]]
-  then local IFS; IFS=''; echo -n "$*"
+  if [[ "${out:-}" == "" ]]; then printf '%s' "$@"
   else local -n __buffer="${out:?}"; __buffer+=("$@"); fi
 }
 
