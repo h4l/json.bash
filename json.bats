@@ -1,13 +1,7 @@
 # shellcheck shell=bash
 set -o pipefail
 
-setup_file() {
-  cd "${BATS_TEST_DIRNAME:?}"
-}
-
-setup() {
-  source ./json.bash
-}
+load json.bash
 
 @test "encode_json_strings" {
   [[ $(encode_json_strings) == '' ]]
