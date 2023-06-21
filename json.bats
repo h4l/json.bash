@@ -3,6 +3,23 @@ set -o pipefail
 
 load json.bash
 
+@test "json.bash.buffer_output" {
+  [[ $(json.bash.buffer_output) == "" ]]
+  [[ $(json.bash.buffer_output foo) == "foo" ]]
+  [[ $(json.bash.buffer_output foo bar) == "foobar" ]]
+
+  local buff
+  out=buff json.bash.buffer_output
+  [[ ${#buff[@]} == 0 ]]
+
+  out=buff json.bash.buffer_output foo
+  [[ ${#buff[@]} == 1 && ${buff[0]} == "foo" ]]
+
+  out=buff json.bash.buffer_output bar $'baz\nboz'
+  [[ ${#buff[@]} == 3 && ${buff[0]} == "foo" && ${buff[1]} == "bar" \
+    && ${buff[2]} == $'baz\nboz' ]]
+}
+
 @test "encode_json_strings" {
   [[ $(encode_json_strings) == '' ]]
   [[ $(encode_json_strings "") == '""' ]]

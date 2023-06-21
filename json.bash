@@ -13,6 +13,16 @@ declare -gA _json_bash_escapes=(
   [$'\x18']='\u0018' [$'\x19']='\u0019' [$'\x1a']='\u001a' [$'\x1b']='\u001b'
   [$'\x1c']='\u001c' [$'\x1d']='\u001d' [$'\x1e']='\u001e' [$'\x1f']='\u001f')
 
+# Output text, either to stdout or buffer into an array.
+#
+# If $out is set, arguments are appended to the array variable $out. Otherwise
+# arguments go directly to stdout, without any separator between each value.
+function json.bash.buffer_output() {
+  if [[ "${out:-}" == "" ]]
+  then local IFS; IFS=''; echo -n "$*"
+  else local -n __buffer="${out:?}"; __buffer+=("$@"); fi
+}
+
 # Encode the positional arguments as JSON strings, joined by commas.
 function encode_json_strings() {
   local strings joined literal escape
@@ -26,7 +36,7 @@ function encode_json_strings() {
     escape=${_json_bash_escapes[$literal]:?"no escape for ${literal@A}"}
     joined=${joined//$literal/$escape}
   done
-  echo -n "$joined"
+  out=${out:-} json.bash.buffer_output "$joined"
 }
 
 function _encode_json_values() {
@@ -37,43 +47,48 @@ function _encode_json_values() {
     echo "encode_json_${type_name:?}(): not all inputs are ${type_name:?}:$(printf " '%s'" "$@")" >&2
     return 1
   fi
-  echo -n "$joined"
+  out=${out:-} json.bash.buffer_output "$joined"
 }
 
 function encode_json_numbers() {
-  type_name=numbers value_pattern=${_json_bash_number_pattern:?} _encode_json_values "$@"
+  type_name=numbers value_pattern=${_json_bash_number_pattern:?} out=${out:-} \
+    _encode_json_values "$@"
 }
 
 function encode_json_bools() {
-  type_name=bools value_pattern="true|false" _encode_json_values "$@"
+  type_name=bools value_pattern="true|false" out=${out:-} _encode_json_values "$@"
 }
 
 function encode_json_falses() {
-  type_name=false value_pattern="false" _encode_json_values "$@"
+  type_name=false value_pattern="false" out=${out:-} _encode_json_values "$@"
 }
 
 function encode_json_trues() {
-  type_name=true value_pattern="true" _encode_json_values "$@"
+  type_name=true value_pattern="true" out=${out:-} _encode_json_values "$@"
 }
 
 function encode_json_nulls() {
-  type_name=nulls value_pattern="null" _encode_json_values "$@"
+  type_name=nulls value_pattern="null" out=${out:-} _encode_json_values "$@"
 }
 
 function encode_json_autos() {
   if [[ $# == 0 ]]; then return; fi
   if [[ $# == 1 ]]; then
-    if [[ \"$1\" =~ ^$_json_bash_auto_pattern$ ]]; then echo -n "$1"
-    else encode_json_strings "$1"; fi
+    if [[ \"$1\" =~ ^$_json_bash_auto_pattern$ ]]; then
+      out=${out:-} json.bash.buffer_output "$1"
+    else out=${out:-} encode_json_strings "$1"; fi
     return
   fi
 
   # Bash 5.2 supports & match references in substitutions, which would make it
   # easy to do this match & substitution in-process (without looping). But 5.2
   # is not yet widely available, so we'll fork a sed process to do this instead.
-  sed <<<",$(encode_json_strings "$@")" -Ee "s/,${_json_bash_auto_pattern:?}/,\1/g" \
-    | tail -c +2  # remove the , we added at the start
-  [[ "${PIPESTATUS[*]}" == "0 0 0" ]] || return 1
+  local buff
+  out=buff encode_json_strings "$@"
+  # FIXME: get rid of this sed & subshell fork
+  auto=$(sed <<<",${buff[0]:?}" -Ee "s/,${_json_bash_auto_pattern:?}/,\1/g") \
+    || return 1
+  out=${out:-} json.bash.buffer_output "${auto:1}" # strip the , we added
 }
 
 function encode_json_raws() {
@@ -81,7 +96,7 @@ function encode_json_raws() {
     echo "json.bash: raw JSON value is empty" >&2; return 1
   fi
   # Caller is responsible for ensuring values are valid JSON!
-  local IFS; IFS=${join:-,}; echo -n "$*";  # join by ,
+  local IFS=${join:-,}; out=${out:-} json.bash.buffer_output "$*";  # join by ,
 }
 
 # Encode arguments as JSON objects or arrays and print to stdout.
@@ -116,6 +131,7 @@ function json() {
   # vars referenced by arguments cannot start with _, so we prefix our own vars
   # with _ to prevent args referencing locals.
   local _json_return _array _encode_fn _entries _json_val _key _type _value _match
+  _entries=()
   _json_return=${json_return:-object}
 
   [[ $_json_return == object || $_json_return == array ]] || {
@@ -123,10 +139,8 @@ function json() {
     return 1
   }
 
-  if [[ $_json_return == object ]];
-  then echo -n '{'; local _json_end='}'
-  else echo -n '['; local _json_end=']'; fi
-  local _json_separator=''
+  if [[ $_json_return == object ]]; then _entries+=("{")
+  else _entries+=("["); fi
 
   for arg in "$@"; do
     if [[ $arg =~ $_json_bash_arg_pattern ]]; then
@@ -155,26 +169,33 @@ function json() {
       echo "json(): invalid argument: '$arg'" >&2; return 1;
     fi
 
-    echo -n "${_json_separator}"; _json_separator=,
+    if [[ ${#_entries[@]} != 1 ]]; then _entries+=(","); fi
+
     # Handle the common object string value case a little more efficiently
     if [[ $_type == string && $_json_return == object && $_array == false ]]; then
-      join=: encode_json_strings "$_key" "$_value" || return 1
-    else
-      if [[ $_json_return == object ]]; then
-        encode_json_strings "$_key" && echo -n ':' || return 1
-      fi
-
-      _encode_fn="encode_json_${_type:?}s"
-      local _status=0
-      if [[ $_array == true ]]; then
-        echo -n '[' && "$_encode_fn" "${_value[@]}" && echo -n ']' || _status=$?
-      else "$_encode_fn" "${_value}" || _status=$?; fi
-      [[ $_status == 0 ]] \
-        || { echo "json(): $status $_encode_fn: failed to encode ${arg@A} ${_value@A}" >&2; return 1; }
-
+      join=: out=_entries encode_json_strings "$_key" "$_value" || return 1
+      continue
     fi
+
+    if [[ $_json_return == object ]]; then
+      out=_entries encode_json_strings "$_key" || return 1
+      _entries+=(":")
+    fi
+    _encode_fn="encode_json_${_type:?}s"
+    local _status=0
+    if [[ $_array == true ]]; then
+      _entries+=("[");
+      out=_entries "$_encode_fn" "${_value[@]}" || _status=$?;
+      _entries+=("]")
+    else out=_entries "$_encode_fn" "${_value}" || _status=$?; fi
+    [[ $_status == 0 ]] \
+      || { echo "json(): failed to encode ${arg@A} ${_value@A}" >&2; return 1; }
   done
-  echo -n "${_json_end:?}"
+
+  if [[ $_json_return == object ]]; then _entries+=("}")
+  else _entries+=("]"); fi
+  # TODO: should we push chunks rather than merging?
+  local IFS; IFS=; out=${out:-} json.bash.buffer_output "${_entries[@]}"
 }
 
 function json.object() {
