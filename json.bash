@@ -180,5 +180,7 @@ function json.array() {
 }
 
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then # we're being executed directly
-  json "$@" || exit $?
+  fn=json
+  if [[ $0 =~ json.(array|object)$ ]]; then fn=json.${BASH_REMATCH[1]}; fi
+  "${fn:?}" "$@" || exit $?
 fi
