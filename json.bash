@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
+shopt -s extglob # required to match our auto glob patterns
 
 _json_bash_arg_pattern='^(@(\w+)|([^:=@-][^:=@]*))?(:(auto|bool|false|null|number|raw|string|true)(\[\])?)?(@=(\w+)|=(.*))?$'
 _json_bash_number_pattern='-?(0|[1-9][0-9]*)(\.[0-9]*)?([eE][+-]?[0-9]+)?'
 _json_bash_auto_pattern="\"(null|true|false|${_json_bash_number_pattern:?})\""
+_json_bash_number_glob='?([-])@(0|[1-9]*([0-9]))?([.]+([0-9]))?([eE]?([+-])+([0-9]))'
+_json_bash_auto_glob="\"@(true|false|null|$_json_bash_number_glob)\""
 declare -gA _json_bash_escapes=(
                      [$'\x01']='\u0001' [$'\x02']='\u0002' [$'\x03']='\u0003'
   [$'\x04']='\u0004' [$'\x05']='\u0005' [$'\x06']='\u0006' [$'\x07']='\u0007'
@@ -77,33 +80,38 @@ function encode_json_strings() {
 function _encode_json_values() {
   if [[ $# == 0 ]]; then return; fi
   values=("${@//$','/$'\\,'}")  # escape , (no-op unless input is invalid)
-  local IFS; IFS=${join:-,}; joined="${values[*]}";  # join by ,
-  if [[ ! ",$joined" =~ ^(,(${value_pattern:?}))+$ ]]; then
-    echo "encode_json_${type_name:?}(): not all inputs are ${type_name:?}:$(printf " '%s'" "$@")" >&2
+  local validation_join=${join:-,}
+  local IFS; IFS=${validation_join:?}; joined="${values[*]}";  # join by ,
+  if [[ ! "${validation_join}$joined" =~ \
+         ^(${validation_join}(${value_pattern:?}))+$ ]]; then
+    echo "encode_json_${type_name:?}(): not all inputs are ${type_name:?}:\
+$(printf " '%s'" "$@")" >&2
     return 1
   fi
-  out=${out:-} json.bash.buffer_output "$joined"
+  if [[ ${join:-} == '' ]]; then out=${out:-} json.bash.buffer_output "$@"
+  else IFS=${join}; out=${out:-} json.bash.buffer_output "$joined"; fi
 }
 
 function encode_json_numbers() {
   type_name=numbers value_pattern=${_json_bash_number_pattern:?} out=${out:-} \
-    _encode_json_values "$@"
+    join=${join:-} _encode_json_values "$@"
 }
 
 function encode_json_bools() {
-  type_name=bools value_pattern="true|false" out=${out:-} _encode_json_values "$@"
+  type_name=bools value_pattern="true|false" out=${out:-} join=${join:-} \
+    _encode_json_values "$@"
 }
 
 function encode_json_falses() {
-  type_name=false value_pattern="false" out=${out:-} _encode_json_values "$@"
+  type_name=false value_pattern="false" out=${out:-} join=${join:-} _encode_json_values "$@"
 }
 
 function encode_json_trues() {
-  type_name=true value_pattern="true" out=${out:-} _encode_json_values "$@"
+  type_name=true value_pattern="true" out=${out:-} join=${join:-} _encode_json_values "$@"
 }
 
 function encode_json_nulls() {
-  type_name=nulls value_pattern="null" out=${out:-} _encode_json_values "$@"
+  type_name=nulls value_pattern="null" out=${out:-} join=${join:-} _encode_json_values "$@"
 }
 
 function encode_json_autos() {
@@ -116,22 +124,34 @@ function encode_json_autos() {
   fi
 
   # Bash 5.2 supports & match references in substitutions, which would make it
-  # easy to do this match & substitution in-process (without looping). But 5.2
-  # is not yet widely available, so we'll fork a sed process to do this instead.
-  local buff
-  out=buff encode_json_strings "$@"
-  # FIXME: get rid of this sed & subshell fork
-  auto=$(sed <<<",${buff[0]:?}" -Ee "s/,${_json_bash_auto_pattern:?}/,\1/g") \
-    || return 1
-  out=${out:-} json.bash.buffer_output "${auto:1}" # strip the , we added
+  # easy to remove quotes from things matching the auto pattern. But 5.2 is not
+  # yet widely available, so we'll implement with a bash-level loop, which is
+  # probably quite slow for large arrays.
+  # TODO: Add a conditional branch to implement this with & ref substitutions
+  local __encode_json_autos  # __ to avoid var clashes...
+  out=__encode_json_autos join= encode_json_strings "$@"
+  autos=("${__encode_json_autos[@]//$_json_bash_auto_glob/}")
+  for ((i=0; i < ${#__encode_json_autos[@]}; ++i)); do
+    if [[ ${#autos[$i]} == 0 ]];
+    then __encode_json_autos[$i]=${__encode_json_autos[$i]:1:-1}; fi
+  done
+
+  if [[ ${join:-} == '' ]]; then
+  out=${out:-} json.bash.buffer_output "${__encode_json_autos[@]}"
+  else
+    local IFS=${join};
+    out=${out:-} json.bash.buffer_output "${__encode_json_autos[*]}";
+  fi
 }
 
 function encode_json_raws() {
+  # Caller is responsible for ensuring values are valid JSON!
   if [[ $# == 1 && $1 == "" ]]; then
     echo "json.bash: raw JSON value is empty" >&2; return 1
   fi
-  # Caller is responsible for ensuring values are valid JSON!
-  local IFS=${join:-,}; out=${out:-} json.bash.buffer_output "$*";  # join by ,
+
+  if [[ ${join:-} == '' ]]; then out=${out:-} json.bash.buffer_output "$@"
+  else IFS=${join}; out=${out:-} json.bash.buffer_output "$*"; fi
 }
 
 # Encode arguments as JSON objects or arrays and print to stdout.
@@ -209,7 +229,7 @@ function json() {
 
     # Handle the common object string value case a little more efficiently
     if [[ $_type == string && $_json_return == object && $_array == false ]]; then
-      join=: out=${out:-} encode_json_strings "$_key" "$_value" || return 1
+      join=':' out=${out:-} encode_json_strings "$_key" "$_value" || return 1
       continue
     fi
 
@@ -221,7 +241,7 @@ function json() {
     local _status=0
     if [[ $_array == true ]]; then
       out=${out:-} json.bash.buffer_output "["
-      out=${out:-} "$_encode_fn" "${_value[@]}" || _status=$?
+      out=${out:-} join=, "$_encode_fn" "${_value[@]}" || _status=$?
       out=${out:-} json.bash.buffer_output "]"
     else out=${out:-} "$_encode_fn" "${_value}" || _status=$?; fi
     [[ $_status == 0 ]] \

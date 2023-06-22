@@ -90,6 +90,7 @@ if actual != expected:
 }
 
 @test "encode_json_numbers" {
+  join=,
   [[ $(encode_json_numbers) == "" ]]
   [[ $(encode_json_numbers 42) == "42" ]]
   [[ $(encode_json_numbers -1.34e+4 2.1e-4 2e6) == "-1.34e+4,2.1e-4,2e6" ]]
@@ -98,9 +99,17 @@ if actual != expected:
   [[ $output == "encode_json_numbers(): not all inputs are numbers: 'foo' 'bar'" ]]
   run encode_json_bools 42,42
   [[ $status == 1 ]]
+
+  local buff=()
+  out=buff join= encode_json_numbers 1
+  out=buff join= encode_json_numbers 2 3
+  out=buff join=$'\n' encode_json_numbers 4 5
+  [[ ${#buff[@]} == 4 && ${buff[0]} == '1' && ${buff[1]} == '2' \
+    && ${buff[2]} == '3' && ${buff[3]} == $'4\n5' ]]
 }
 
 @test "encode_json_bools" {
+  join=,
   [[ $(encode_json_bools) == "" ]]
   [[ $(encode_json_bools true) == "true" ]]
   [[ $(encode_json_bools false) == "false" ]]
@@ -110,9 +119,17 @@ if actual != expected:
   [[ $output == "encode_json_bools(): not all inputs are bools: 'foo' 'bar'" ]]
   run encode_json_bools true,true
   [[ $status == 1 ]]
+
+  local buff=()
+  out=buff join= encode_json_bools true
+  out=buff join= encode_json_bools false true
+  out=buff join=$'\n' encode_json_bools true false
+  [[ ${#buff[@]} == 4 && ${buff[0]} == 'true' && ${buff[1]} == 'false' \
+    && ${buff[2]} == 'true' && ${buff[3]} == $'true\nfalse' ]]
 }
 
 @test "encode_json_nulls" {
+  join=,
   [[ $(encode_json_nulls) == "" ]]
   [[ $(encode_json_nulls null) == "null" ]]
   [[ $(encode_json_nulls null null) == "null,null" ]]
@@ -121,9 +138,17 @@ if actual != expected:
   [[ $output == "encode_json_nulls(): not all inputs are nulls: 'foo' 'bar'" ]]
   run encode_json_nulls null,null
   [[ $status == 1 ]]
+
+  local buff=()
+  out=buff join= encode_json_nulls null
+  out=buff join= encode_json_nulls null null
+  out=buff join=$'\n' encode_json_autos null null
+  [[ ${#buff[@]} == 4 && ${buff[0]} == 'null' && ${buff[1]} == 'null' \
+    && ${buff[2]} == 'null' && ${buff[3]} == $'null\nnull' ]]
 }
 
 @test "encode_json_autos" {
+  join=,
   [[ $(encode_json_autos) == '' ]]
   [[ $(encode_json_autos 42) == '42' ]]
   [[ $(encode_json_autos hi) == '"hi"' ]]
@@ -134,6 +159,35 @@ if actual != expected:
   [[ $(encode_json_autos ',"42') == '",\"42"' ]]
   [[ $(encode_json_autos foo '"42' foo '"42') == '"foo","\"42","foo","\"42"' ]]
   [[ $(encode_json_autos foo ',"42' foo ',"42') == '"foo",",\"42","foo",",\"42"' ]]
+
+  local buff=()
+  out=buff join= encode_json_autos null
+  out=buff join= encode_json_autos hi 42
+  out=buff join=$'\n' encode_json_autos abc true
+  [[ ${#buff[@]} == 4 && ${buff[0]} == 'null' && ${buff[1]} == '"hi"' \
+    && ${buff[2]} == '42' && ${buff[3]} == $'"abc"\ntrue' ]]
+}
+
+@test "encode_json_raws" {
+  join=,
+  [[ $(encode_json_raws) == '' ]]
+  [[ $(encode_json_raws '{}') == '{}' ]]
+  # invalid JSON is not checked/detected
+  [[ $(encode_json_raws '}') == '}' ]]
+  [[ $(encode_json_raws '[]' '{}') == '[],{}' ]]
+
+  run encode_json_raws ''
+  echo $output >&2
+  [[ $status == 1 ]]
+  [[ $output =~ "raw JSON value is empty" ]]
+
+  local buff=()
+  out=buff join= encode_json_raws 1
+  out=buff join= encode_json_raws 2 3
+  out=buff join=$'\n' encode_json_raws 4 5
+  declare -p buff
+  [[ ${#buff[@]} == 4 && ${buff[0]} == '1' && ${buff[1]} == '2' \
+    && ${buff[2]} == '3' && ${buff[3]} == $'4\n5' ]]
 }
 
 # Assert JSON on stdin matches JSON given as the first argument.
