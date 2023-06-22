@@ -21,21 +21,44 @@ load json.bash
 }
 
 @test "encode_json_strings" {
+  join=,
   [[ $(encode_json_strings) == '' ]]
   [[ $(encode_json_strings "") == '""' ]]
   [[ $(encode_json_strings foo) == '"foo"' ]]
   [[ $(encode_json_strings foo $'bar\nbaz\tboz\n') == '"foo","bar\nbaz\tboz\n"' ]]
+  [[ $(join=$'\n' encode_json_strings foo $'bar\nbaz\tboz\n') \
+    ==  $'"foo"\n"bar\\nbaz\\tboz\\n"' ]]
+
+  local buff=()
+  out=buff encode_json_strings
+  [[ ${buff[*]} == "" ]]
+
+  buff=()
+  out=buff encode_json_strings ""
+  [[ ${#buff[@]} == 1 && ${buff[0]} == '""' ]]
+
+  out=buff encode_json_strings "foo"
+  [[ ${#buff[@]} == 2 && ${buff[0]} == '""' && ${buff[1]} == '"foo"' ]]
+
+  out=buff join= encode_json_strings $'bar\nbaz' boz
+  [[ ${#buff[@]} == 4 && ${buff[0]} == '""' && ${buff[1]} == '"foo"' \
+    && ${buff[2]} == $'"bar\\nbaz"' && ${buff[3]} == '"boz"' ]]
+
+  out=buff join=, encode_json_strings abc def
+  [[ ${#buff[@]} == 5 && ${buff[4]} == '"abc","def"' ]]
 }
 
-@test "encode_json_strings :: all bytes (other than zero)" {
-  # Check we can encode all bytes (other than 0, which bash can't hold in vars)
-  chars=$(python3 -c 'print("".join(chr(c) for c in range(1, 256)))')
-  chars_json=$(encode_json_strings "${chars:?}")
+# A string containing all bytes (other than 0, which bash can't hold in vars)
+function all_bytes() {
+  python3 -c 'print("".join(chr(c) for c in range(1, 256)))'
+}
 
-  chars_json="${chars_json:?}" python3 <<< '
+# Verify that the first arg is a JSON string containing bytes 1..255 inclusive
+function assert_is_all_bytes_json() {
+  all_bytes_json="${1:?}" python3 <<< '
 import json, os
 
-actual = json.loads(os.environ["chars_json"])
+actual = json.loads(os.environ["all_bytes_json"])
 expected = "".join(chr(c) for c in range(1, 256))
 
 if actual != expected:
@@ -43,6 +66,27 @@ if actual != expected:
     f"Decoded JSON chars did not match:\n  {actual=!r}\n{expected=!r}"
   )
   '
+}
+
+@test "encode_json_strings :: all bytes (other than zero)" {
+  # Check we can encode all bytes (other than 0, which bash can't hold in vars)
+  bytes=$(all_bytes)
+  # encode_json_strings has 3 code paths which we need to test:
+
+  # 1. single strings
+  all_bytes_json=$(encode_json_strings "${bytes:?}")
+  assert_is_all_bytes_json "${all_bytes_json:?}"
+
+  # 2. multiple strings with un-joined output
+  buff=()
+  out=buff encode_json_strings "${bytes:?}" "${bytes:?}"
+  assert_is_all_bytes_json "${buff[0]:?}"
+  assert_is_all_bytes_json "${buff[1]:?}"
+  [[ ${#buff[@]} == 2 ]]
+
+  # 3. multiple strings with joined output
+  output=$(join=, encode_json_strings "${bytes:?}" "${bytes:?}")
+  [[ $output == "${buff[0]},${buff[1]}" ]]
 }
 
 @test "encode_json_numbers" {

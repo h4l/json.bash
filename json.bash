@@ -22,25 +22,56 @@ function json.bash.buffer_output() {
   else local -n __buffer="${out:?}"; __buffer+=("$@"); fi
 }
 
-# Encode the positional arguments as JSON strings, joined by commas.
+# Encode the positional arguments as JSON strings.
+#
+# The output goes to stdout or the $out array if set. If $join is not empty,
+# all the arguments are joined into a single value and emitted as one.
+#
+# Implementation note: For performance reasons we have 3 code paths to optimise
+# common usage patterns while supporting output of arrays. The common cases are
+# a single string and multiple strings joined by , for arrays, or : for
+# key:value object entries.
 function encode_json_strings() {
+  if [[ $# == 1 ]]; then
+    local string literal escape
+    string=${1//$'\\'/$'\\\\'}             # escape \
+    string=${string//$'"'/$'\\"'}          # escape "
+    string=${string//$'\n'/$'\\n'}         # optimistically escape \n
+    string="\"${string}\""                 # wrap in quotes
+    while [[ $string =~ [$'\x01'-$'\x1f\t\n\v\f\r'] ]]; do  # Escape control chars
+      literal=${BASH_REMATCH[0]:?}
+      escape=${_json_bash_escapes[$literal]:?}
+      string=${string//$literal/$escape}
+    done
+    out=${out:-} json.bash.buffer_output "$string"
+    return
+  fi
+
   local strings joined literal escape
   strings=("${@//$'\\'/$'\\\\'}")             # escape \
   strings=("${strings[@]//$'"'/$'\\"'}")      # escape "
   strings=("${strings[@]//$'\n'/$'\\n'}")     # optimistically escape \n
   strings=("${strings[@]/#/\"}")              # wrap in quotes
   strings=("${strings[@]/%/\"}")
-  local IFS=${joined:-,}; joined="${strings[*]}";  # join by , (by default)
-  local controls=$'\x01\x02\x03\x04\x05\x06\x07\b\t\n\x0b\f\r\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f'
-  while [[ $joined =~ [$controls] ]]; do  # Escape control chars
-    literal=${BASH_REMATCH[0]:?}
-    escape=${_json_bash_escapes[$literal]:?"no escape for ${literal@A}"}
-    controls=${controls/$literal/}
-    strings=("${strings[@]//$literal/$escape}")
-  done
-  if [[ ${join:-} != '' ]]; then
-  local IFS=${join:?}; out=${out:-} json.bash.buffer_output "${strings[*]}";
-  else out=${out:-} json.bash.buffer_output "${strings[@]}"; fi
+  local IFS=${join:-}; joined="${strings[*]}";
+  local controls=$'\x01\x02\x03\x04\x05\x06\x07\b\t\x0b\f\r\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f'
+
+  if [[ ${join:-} == '' ]]; then
+    while [[ $joined =~ [$controls] ]]; do  # Escape control chars
+      literal=${BASH_REMATCH[0]:?}
+      escape=${_json_bash_escapes[$literal]:?"no escape for ${literal@A}"}
+      controls=${controls/$literal/}
+      strings=("${strings[@]//$literal/$escape}")
+    done
+    out=${out:-} json.bash.buffer_output "${strings[@]}"
+  else
+    while [[ $joined =~ [$controls] ]]; do  # Escape control chars
+      literal=${BASH_REMATCH[0]:?}
+      escape=${_json_bash_escapes[$literal]:?"no escape for ${literal@A}"}
+      joined=${joined//$literal/$escape}
+    done
+    out=${out:-} json.bash.buffer_output "$joined"
+  fi
 }
 
 function _encode_json_values() {
