@@ -27,10 +27,11 @@ function encode_json_strings() {
   local strings joined literal escape
   strings=("${@//$'\\'/$'\\\\'}")             # escape \
   strings=("${strings[@]//$'"'/$'\\"'}")      # escape "
+  strings=("${strings[@]//$'\n'/$'\\n'}")     # optimistically escape \n
   strings=("${strings[@]/#/\"}")              # wrap in quotes
   strings=("${strings[@]/%/\"}")
-  local IFS; IFS=${join:-,}; joined="${strings[*]}";  # join by ,
-  while [[ $joined =~ [$'\x01'-$'\x1f\t\n\v\f\r'] ]]; do  # Escape special chars if needed
+  local IFS; IFS=${join:-,}; joined="${strings[*]}";  # join by , (by default)
+  while [[ $joined =~ [$'\x01'-$'\x1f\t\v\f\r'] ]]; do  # Escape control chars
     literal=${BASH_REMATCH[0]:?}
     escape=${_json_bash_escapes[$literal]:?"no escape for ${literal@A}"}
     joined=${joined//$literal/$escape}
