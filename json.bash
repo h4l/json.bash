@@ -185,9 +185,10 @@ function encode_json_raws() {
 function json() {
   # vars referenced by arguments cannot start with _, so we prefix our own vars
   # with _ to prevent args referencing locals.
-  local _json_return _array _encode_fn _key _type _value _match
-  _json_return=${json_return:-object}
+  local _array _encode_fn _key _type _value _match
+  local _caller_out=${out:-} out=_json_buff _json_buff=()
 
+  local _json_return=${json_return:-object}
   [[ $_json_return == object || $_json_return == array ]] || {
     echo "json(): json_return must be object or array or empty: '$_json_return'"
     return 1
@@ -245,11 +246,13 @@ function json() {
       out=${out:-} json.bash.buffer_output "]"
     else out=${out:-} "$_encode_fn" "${_value}" || _status=$?; fi
     [[ $_status == 0 ]] \
-      || { echo "json(): failed to encode ${arg@A} ${_value@A}" >&2; return 1; }
+      || { echo "json(): failed to encode ${arg@A} -> ${_value@Q}" >&2; return 1; }
   done
 
   if [[ $_json_return == object ]]; then out=${out:-} json.bash.buffer_output "}"
   else out=${out:-} json.bash.buffer_output "]"; fi
+  # Emit only complete JSON values, not pieces
+  local IFS=''; out=${_caller_out?} json.bash.buffer_output "${_json_buff[*]}"
 }
 
 function json.object() {

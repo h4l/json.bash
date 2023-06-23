@@ -3,6 +3,10 @@ set -o pipefail
 
 load json.bash
 
+function mktemp_bats() {
+  mktemp "${BATS_RUN_TMPDIR:?}/json.bats.XXX"
+}
+
 @test "json.bash.buffer_output" {
   [[ $(json.bash.buffer_output) == "" ]]
   [[ $(json.bash.buffer_output foo) == "foo" ]]
@@ -380,6 +384,31 @@ expected: $expected
       }'
 }
 
+@test "json.bash json errors :: do not produce partial JSON output" {
+  # No partial output on errors — either json suceeds with output, or fails with
+  # no output.
+  run json foo=bar error:number=notanumber
+  [[ $status == 1 ]]
+  # no JSON in output:
+  [[ ! $output =~ '{' ]]
+  [[ "$output" == *"failed to encode arg='error:number=notanumber' -> 'notanumber'" ]]
+
+  # Same for array output
+  local buff=() err=$(mktemp_bats)
+  # Can't use run because it forks, and the fork can't write to our buff
+  out=buff json ok:true
+  out=buff json foo=bar error:number=notanumber 2> "${err:?}" || status=$?
+  out=buff json garbage:false
+
+  [[ ${status:-} == 1 ]]
+  [[ ! $(cat "${err:?}") =~ '{' ]]
+  [[ $(cat "${err:?}") == \
+    *"failed to encode arg='error:number=notanumber' -> 'notanumber'" ]]
+  [[ ${#buff[@]} == 2 && ${buff[0]} == '{"ok":true}' \
+    && ${buff[1]} == '{"garbage":false}' ]]
+}
+
+
 @test "json.bash json errors" {
   invalid_args=(
     # inline keys cannot start with '-' (to prevent clashes with option flags,
@@ -408,13 +437,13 @@ expected: $expected
 
   # Invalid typed values are errors
   run json a:number=a
-  [[ $status == 1 && $output =~ "failed to encode arg='a:number=a' _value='a'" ]]
+  [[ $status == 1 && $output =~ "failed to encode arg='a:number=a' -> 'a'" ]]
   run json a:number[]=a
-  [[ $status == 1 && $output =~ "failed to encode arg='a:number[]=a' _value='a'" ]]
+  [[ $status == 1 && $output =~ "failed to encode arg='a:number[]=a' -> 'a'" ]]
   run json a:bool=a
-  [[ $status == 1 && $output =~ "failed to encode arg='a:bool=a' _value='a'" ]]
+  [[ $status == 1 && $output =~ "failed to encode arg='a:bool=a' -> 'a'" ]]
   run json a:null=a
-  [[ $status == 1 && $output =~ "failed to encode arg='a:null=a' _value='a'" ]]
+  [[ $status == 1 && $output =~ "failed to encode arg='a:null=a' -> 'a'" ]]
 }
 
 @test "json.bash json non-errors" {
