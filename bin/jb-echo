@@ -9,5 +9,5 @@ JSON_TYPE=${JSON_TYPE:-string}
     exit 1
 }
 values=()
-out=values "encode_json_${JSON_TYPE}s" "$@"
+out=values "json.encode_${JSON_TYPE}s" "$@"
 IFS=,; echo "[${values[*]}]"

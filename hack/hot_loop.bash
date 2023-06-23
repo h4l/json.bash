@@ -15,18 +15,18 @@ if [[ ${method:?} == json.bash ]]; then
   done
 elif [[ ${method:?} == custom-forking-json.bash ]]; then
   echo custom-json.bash >&2
-  # Use json.bash's encode_json_strings function to manually construct JSON
+  # Use json.bash's json.encode_strings function to manually construct JSON
   for ((id=0; id<$count; ++id)) do
-    data_json=$(join=, encode_json_strings "$data")
+    data_json=$(join=, json.encode_strings "$data")
     printf '{"id":%d,"data":%s}\n' "${id:?}" "${data_json:?}"
   done
 elif [[ ${method:?} == custom-json.bash ]]; then
   echo custom-json.bash >&2
-  # Use json.bash's encode_json_strings function to manually construct JSON
+  # Use json.bash's json.encode_strings function to manually construct JSON
   IFS=
   for ((id=0; id<$count; ++id)) do
     data_json=()
-    out=data_json join=, encode_json_strings "$data"
+    out=data_json join=, json.encode_strings "$data"
     printf '{"id":%d,"data":%s}\n' "${id:?}" "${data_json[*]:?}"
   done
 elif [[ ${method:?} == jq ]]; then

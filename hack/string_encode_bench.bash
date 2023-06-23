@@ -11,12 +11,12 @@ echo "${count@A} ${out_method@A}" >&2
 
 if [[ $out_method == echo ]]; then
   for ((id=0; id<$count; ++id)) do
-    out= join=, encode_json_strings "$@"
+    out= join=, json.encode_strings "$@"
   done
 elif [[ $out_method == buffer ]]; then
   for ((id=0; id<$count; ++id)) do
     buffer=()
-    out=buffer encode_json_strings "$@"
+    out=buffer json.encode_strings "$@"
   done
 else
   echo "$0: unknown ${out_method@A}" >&2

@@ -1,3 +1,4 @@
+#!/usr/bin/env bats
 # shellcheck shell=bash
 set -o pipefail
 
@@ -11,48 +12,48 @@ function mktemp_bats() {
   mktemp "${BATS_RUN_TMPDIR:?}/json.bats.XXX" "$@"
 }
 
-@test "json.bash.buffer_output" {
-  [[ $(json.bash.buffer_output) == "" ]]
-  [[ $(json.bash.buffer_output foo) == "foo" ]]
-  [[ $(json.bash.buffer_output foo bar) == "foobar" ]]
+@test "json.buffer_output" {
+  [[ $(json.buffer_output) == "" ]]
+  [[ $(json.buffer_output foo) == "foo" ]]
+  [[ $(json.buffer_output foo bar) == "foobar" ]]
 
   local buff
-  out=buff json.bash.buffer_output
+  out=buff json.buffer_output
   [[ ${#buff[@]} == 0 ]]
 
-  out=buff json.bash.buffer_output foo
+  out=buff json.buffer_output foo
   [[ ${#buff[@]} == 1 && ${buff[0]} == "foo" ]]
 
-  out=buff json.bash.buffer_output bar $'baz\nboz'
+  out=buff json.buffer_output bar $'baz\nboz'
   [[ ${#buff[@]} == 3 && ${buff[0]} == "foo" && ${buff[1]} == "bar" \
     && ${buff[2]} == $'baz\nboz' ]]
 }
 
-@test "encode_json_strings" {
+@test "json.encode_strings" {
   join=,
-  [[ $(encode_json_strings) == '' ]]
-  [[ $(encode_json_strings "") == '""' ]]
-  [[ $(encode_json_strings foo) == '"foo"' ]]
-  [[ $(encode_json_strings foo $'bar\nbaz\tboz\n') == '"foo","bar\nbaz\tboz\n"' ]]
-  [[ $(join=$'\n' encode_json_strings foo $'bar\nbaz\tboz\n') \
+  [[ $(json.encode_strings) == '' ]]
+  [[ $(json.encode_strings "") == '""' ]]
+  [[ $(json.encode_strings foo) == '"foo"' ]]
+  [[ $(json.encode_strings foo $'bar\nbaz\tboz\n') == '"foo","bar\nbaz\tboz\n"' ]]
+  [[ $(join=$'\n' json.encode_strings foo $'bar\nbaz\tboz\n') \
     ==  $'"foo"\n"bar\\nbaz\\tboz\\n"' ]]
 
   local buff=()
-  out=buff encode_json_strings
+  out=buff json.encode_strings
   [[ ${buff[*]} == "" ]]
 
   buff=()
-  out=buff encode_json_strings ""
+  out=buff json.encode_strings ""
   [[ ${#buff[@]} == 1 && ${buff[0]} == '""' ]]
 
-  out=buff encode_json_strings "foo"
+  out=buff json.encode_strings "foo"
   [[ ${#buff[@]} == 2 && ${buff[0]} == '""' && ${buff[1]} == '"foo"' ]]
 
-  out=buff join= encode_json_strings $'bar\nbaz' boz
+  out=buff join= json.encode_strings $'bar\nbaz' boz
   [[ ${#buff[@]} == 4 && ${buff[0]} == '""' && ${buff[1]} == '"foo"' \
     && ${buff[2]} == $'"bar\\nbaz"' && ${buff[3]} == '"boz"' ]]
 
-  out=buff join=, encode_json_strings abc def
+  out=buff join=, json.encode_strings abc def
   [[ ${#buff[@]} == 5 && ${buff[4]} == '"abc","def"' ]]
 }
 
@@ -76,123 +77,123 @@ if actual != expected:
   '
 }
 
-@test "encode_json_strings :: all bytes (other than zero)" {
+@test "json.encode_strings :: all bytes (other than zero)" {
   # Check we can encode all bytes (other than 0, which bash can't hold in vars)
   bytes=$(all_bytes)
-  # encode_json_strings has 3 code paths which we need to test:
+  # json.encode_strings has 3 code paths which we need to test:
 
   # 1. single strings
-  all_bytes_json=$(encode_json_strings "${bytes:?}")
+  all_bytes_json=$(json.encode_strings "${bytes:?}")
   assert_is_all_bytes_json "${all_bytes_json:?}"
 
   # 2. multiple strings with un-joined output
   buff=()
-  out=buff encode_json_strings "${bytes:?}" "${bytes:?}"
+  out=buff json.encode_strings "${bytes:?}" "${bytes:?}"
   assert_is_all_bytes_json "${buff[0]:?}"
   assert_is_all_bytes_json "${buff[1]:?}"
   [[ ${#buff[@]} == 2 ]]
 
   # 3. multiple strings with joined output
-  output=$(join=, encode_json_strings "${bytes:?}" "${bytes:?}")
+  output=$(join=, json.encode_strings "${bytes:?}" "${bytes:?}")
   [[ $output == "${buff[0]},${buff[1]}" ]]
 }
 
-@test "encode_json_numbers" {
+@test "json.encode_numbers" {
   join=,
-  [[ $(encode_json_numbers) == "" ]]
-  [[ $(encode_json_numbers 42) == "42" ]]
-  [[ $(encode_json_numbers -1.34e+4 2.1e-4 2e6) == "-1.34e+4,2.1e-4,2e6" ]]
-  run encode_json_numbers foo bar
+  [[ $(json.encode_numbers) == "" ]]
+  [[ $(json.encode_numbers 42) == "42" ]]
+  [[ $(json.encode_numbers -1.34e+4 2.1e-4 2e6) == "-1.34e+4,2.1e-4,2e6" ]]
+  run json.encode_numbers foo bar
   [[ $status == 1 ]]
-  [[ $output == "encode_json_numbers(): not all inputs are numbers: 'foo' 'bar'" ]]
-  run encode_json_bools 42,42
+  [[ $output == "json.encode_numbers(): not all inputs are numbers: 'foo' 'bar'" ]]
+  run json.encode_bools 42,42
   [[ $status == 1 ]]
 
   local buff=()
-  out=buff join= encode_json_numbers 1
-  out=buff join= encode_json_numbers 2 3
-  out=buff join=$'\n' encode_json_numbers 4 5
+  out=buff join= json.encode_numbers 1
+  out=buff join= json.encode_numbers 2 3
+  out=buff join=$'\n' json.encode_numbers 4 5
   [[ ${#buff[@]} == 4 && ${buff[0]} == '1' && ${buff[1]} == '2' \
     && ${buff[2]} == '3' && ${buff[3]} == $'4\n5' ]]
 }
 
-@test "encode_json_bools" {
+@test "json.encode_bools" {
   join=,
-  [[ $(encode_json_bools) == "" ]]
-  [[ $(encode_json_bools true) == "true" ]]
-  [[ $(encode_json_bools false) == "false" ]]
-  [[ $(encode_json_bools false true) == "false,true" ]]
-  run encode_json_bools foo bar
+  [[ $(json.encode_bools) == "" ]]
+  [[ $(json.encode_bools true) == "true" ]]
+  [[ $(json.encode_bools false) == "false" ]]
+  [[ $(json.encode_bools false true) == "false,true" ]]
+  run json.encode_bools foo bar
   [[ $status == 1 ]]
-  [[ $output == "encode_json_bools(): not all inputs are bools: 'foo' 'bar'" ]]
-  run encode_json_bools true,true
+  [[ $output == "json.encode_bools(): not all inputs are bools: 'foo' 'bar'" ]]
+  run json.encode_bools true,true
   [[ $status == 1 ]]
 
   local buff=()
-  out=buff join= encode_json_bools true
-  out=buff join= encode_json_bools false true
-  out=buff join=$'\n' encode_json_bools true false
+  out=buff join= json.encode_bools true
+  out=buff join= json.encode_bools false true
+  out=buff join=$'\n' json.encode_bools true false
   [[ ${#buff[@]} == 4 && ${buff[0]} == 'true' && ${buff[1]} == 'false' \
     && ${buff[2]} == 'true' && ${buff[3]} == $'true\nfalse' ]]
 }
 
-@test "encode_json_nulls" {
+@test "json.encode_nulls" {
   join=,
-  [[ $(encode_json_nulls) == "" ]]
-  [[ $(encode_json_nulls null) == "null" ]]
-  [[ $(encode_json_nulls null null) == "null,null" ]]
-  run encode_json_nulls foo bar
+  [[ $(json.encode_nulls) == "" ]]
+  [[ $(json.encode_nulls null) == "null" ]]
+  [[ $(json.encode_nulls null null) == "null,null" ]]
+  run json.encode_nulls foo bar
   [[ $status == 1 ]]
-  [[ $output == "encode_json_nulls(): not all inputs are nulls: 'foo' 'bar'" ]]
-  run encode_json_nulls null,null
+  [[ $output == "json.encode_nulls(): not all inputs are nulls: 'foo' 'bar'" ]]
+  run json.encode_nulls null,null
   [[ $status == 1 ]]
 
   local buff=()
-  out=buff join= encode_json_nulls null
-  out=buff join= encode_json_nulls null null
-  out=buff join=$'\n' encode_json_autos null null
+  out=buff join= json.encode_nulls null
+  out=buff join= json.encode_nulls null null
+  out=buff join=$'\n' json.encode_autos null null
   [[ ${#buff[@]} == 4 && ${buff[0]} == 'null' && ${buff[1]} == 'null' \
     && ${buff[2]} == 'null' && ${buff[3]} == $'null\nnull' ]]
 }
 
-@test "encode_json_autos" {
+@test "json.encode_autos" {
   join=,
-  [[ $(encode_json_autos) == '' ]]
-  [[ $(encode_json_autos 42) == '42' ]]
-  [[ $(encode_json_autos hi) == '"hi"' ]]
-  [[ $(encode_json_autos true) == 'true' ]]
-  [[ $(encode_json_autos true hi 42) == 'true,"hi",42' ]]
-  [[ $(encode_json_autos true,false foo bar 42) == '"true,false","foo","bar",42' ]]
-  [[ $(encode_json_autos '"42') == '"\"42"' ]]
-  [[ $(encode_json_autos ',"42') == '",\"42"' ]]
-  [[ $(encode_json_autos foo '"42' foo '"42') == '"foo","\"42","foo","\"42"' ]]
-  [[ $(encode_json_autos foo ',"42' foo ',"42') == '"foo",",\"42","foo",",\"42"' ]]
+  [[ $(json.encode_autos) == '' ]]
+  [[ $(json.encode_autos 42) == '42' ]]
+  [[ $(json.encode_autos hi) == '"hi"' ]]
+  [[ $(json.encode_autos true) == 'true' ]]
+  [[ $(json.encode_autos true hi 42) == 'true,"hi",42' ]]
+  [[ $(json.encode_autos true,false foo bar 42) == '"true,false","foo","bar",42' ]]
+  [[ $(json.encode_autos '"42') == '"\"42"' ]]
+  [[ $(json.encode_autos ',"42') == '",\"42"' ]]
+  [[ $(json.encode_autos foo '"42' foo '"42') == '"foo","\"42","foo","\"42"' ]]
+  [[ $(json.encode_autos foo ',"42' foo ',"42') == '"foo",",\"42","foo",",\"42"' ]]
 
   local buff=()
-  out=buff join= encode_json_autos null
-  out=buff join= encode_json_autos hi 42
-  out=buff join=$'\n' encode_json_autos abc true
+  out=buff join= json.encode_autos null
+  out=buff join= json.encode_autos hi 42
+  out=buff join=$'\n' json.encode_autos abc true
   [[ ${#buff[@]} == 4 && ${buff[0]} == 'null' && ${buff[1]} == '"hi"' \
     && ${buff[2]} == '42' && ${buff[3]} == $'"abc"\ntrue' ]]
 }
 
-@test "encode_json_raws" {
+@test "json.encode_raws" {
   join=,
-  [[ $(encode_json_raws) == '' ]]
-  [[ $(encode_json_raws '{}') == '{}' ]]
+  [[ $(json.encode_raws) == '' ]]
+  [[ $(json.encode_raws '{}') == '{}' ]]
   # invalid JSON is not checked/detected
-  [[ $(encode_json_raws '}') == '}' ]]
-  [[ $(encode_json_raws '[]' '{}') == '[],{}' ]]
+  [[ $(json.encode_raws '}') == '}' ]]
+  [[ $(json.encode_raws '[]' '{}') == '[],{}' ]]
 
-  run encode_json_raws ''
+  run json.encode_raws ''
   echo $output >&2
   [[ $status == 1 ]]
   [[ $output =~ "raw JSON value is empty" ]]
 
   local buff=()
-  out=buff join= encode_json_raws 1
-  out=buff join= encode_json_raws 2 3
-  out=buff join=$'\n' encode_json_raws 4 5
+  out=buff join= json.encode_raws 1
+  out=buff join= json.encode_raws 2 3
+  out=buff join=$'\n' json.encode_raws 4 5
   declare -p buff
   [[ ${#buff[@]} == 4 && ${buff[0]} == '1' && ${buff[1]} == '2' \
     && ${buff[2]} == '3' && ${buff[3]} == $'4\n5' ]]
