@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 shopt -s extglob # required to match our auto glob patterns
 
+JSON_BASH_VERSION=0.1.0
 _json_bash_arg_pattern='^(@(\w+)|([^:=@-][^:=@]*))?(:(auto|bool|false|null|number|raw|string|true)(\[\])?)?(@=(\w+)|=(.*))?$'
 _json_bash_number_pattern='-?(0|[1-9][0-9]*)(\.[0-9]*)?([eE][+-]?[0-9]+)?'
 _json_bash_auto_pattern="\"(null|true|false|${_json_bash_number_pattern:?})\""
@@ -264,7 +265,47 @@ function json.array() {
 }
 
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then # we're being executed directly
+  case ${1:-} in
+    -h|--help)
+    prog=$(basename "$0"); prog_obj=${prog%?array} prog_array=${prog_obj}-array
+    cat <<-EOT
+Generate JSON objects.
+
+Usage:
+  ${prog:?} [key][:type][=value]...
+
+Examples:
+  $ ${prog_obj:?} msg="Hello World" size:number=42 enable:true data:false
+  {"msg":"Hello World","size":42,"enable":true,"data":false}
+
+  # Reference variables with @name
+  $ id=42 date=\$(date --iso) ${prog_obj:?} @id created@=date modified@=date
+  {"id":"42","created":"2023-06-23","modified":"2023-06-23"}
+
+  # Create arrays with ${prog_array}
+  $ ${prog_array:?} '*.md' :raw="\$(${prog_obj:?} max_width:number=80)"
+  ["*.md",{"max_width":80}]
+
+  # Change the default value type with json_type=
+  $ json_type=number ${prog_array:?} 1 2 3
+  [1,2,3]
+
+  # In a bash script/shell, source ${prog_obj:?} and use the json function
+  $ source \$(command -v ${prog_obj:?})
+  $ out=compilerOptions json removeComments:true
+  $ files=(a.ts b.ts)
+  $ json @compilerOptions:raw @files:string[]
+  {"compilerOptions":{"removeComments":true},"files":["a.ts","b.ts"]}
+
+More:
+  https://github.com/h4l/json.bash
+EOT
+      exit 0;;
+    --version)
+      echo -e "json.bash ${JSON_BASH_VERSION:?}\n" \
+              "https://github.com/h4l/json.bash"; exit 0;;
+  esac
   fn=json
-  if [[ $0 =~ \.(array|object)$ ]]; then fn=json.${BASH_REMATCH[1]}; fi
+  if [[ $0 =~ [^[:alpha:]](array|object)$ ]]; then fn=json.${BASH_REMATCH[1]}; fi
   out= "${fn:?}" "$@" && echo || exit $?
 fi

@@ -3,8 +3,12 @@ set -o pipefail
 
 load json.bash
 
+setup() {
+  cd "${BATS_TEST_DIRNAME:?}"
+}
+
 function mktemp_bats() {
-  mktemp "${BATS_RUN_TMPDIR:?}/json.bats.XXX"
+  mktemp "${BATS_RUN_TMPDIR:?}/json.bats.XXX" "$@"
 }
 
 @test "json.bash.buffer_output" {
@@ -471,4 +475,34 @@ expected: $expected
 
   # missing arrays become empty arrays
   json a:string[]@=__missing | equals_json '{"a": []}'
+}
+
+@test "json.bash CLI :: help" {
+  for flag in -h --help; do
+    run ./json.bash "$flag"
+    [[ $status == 0 ]]
+    [[ $output =~ Generate\ JSON\ objects ]]
+    [[ $output =~ Usage: ]]
+  done
+}
+
+@test "json.bash CLI :: version" {
+  run ./json.bash --version
+  [[ $status == 0 ]]
+  [[ $output =~ "json.bash $JSON_BASH_VERSION" ]]
+}
+
+@test "json.bash CLI :: object output" {
+  # The CLI forwards its arguments to the json() function
+  run ./json.bash "The Message"="Hello World" size:number=42
+  [[ $status == 0 && $output == '{"The Message":"Hello World","size":42}' ]]
+}
+
+@test "json.bash CLI :: array output via prog name" {
+  # The CLI uses json_return=array (like json.array()) when the program name has
+  # the suffix "array"
+  dir=$(mktemp_bats -d)
+  ln -s "${BATS_TEST_DIRNAME:?}/json.bash" "${dir:?}/xxx-array"
+  run "${dir:?}/xxx-array" foo bar
+  [[ $status == 0 && $output == '["foo","bar"]' ]]
 }
