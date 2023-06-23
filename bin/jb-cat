@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../json.bash"
+source json.bash
 
 JSON_BUFFER_LINES=${JSON_BUFFER_LINES:-256}
 [[ "$JSON_BUFFER_LINES" =~ ^[1-9][0-9]*$ ]] || {
