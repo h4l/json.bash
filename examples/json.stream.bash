@@ -20,6 +20,31 @@ function emit() {
   lines=()
 }
 
+if [[ $# != 0 ]]; then
+  if [[ "$@" =~ " --help "|" -h " ]]; then status=0; else status=1; fi
+  cat <<EOF
+Output each line from stdin to stdout as a JSON string followed by a \n.
+
+Usage:
+  $0 [-h|--help]
+
+Examples:
+  $ printf 'foo\nbar\n' | $0
+  "foo"
+  "bar"
+
+Environment Variables:
+  JSON_BUFFER_LINES:
+    The number of input lines to buffer before writing output JSON string lines.
+    [default: 256]
+
+  JSON_TYPE:
+    Interpret each input line as this JSON type. Types are one of string,
+    number, bool, null, true, false, auto. [default: string]
+EOF
+  exit "${status:?}"
+fi
+
 lines=()
 readarray -t -C emit -c "${JSON_BUFFER_LINES:?}" lines
 emit

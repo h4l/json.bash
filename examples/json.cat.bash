@@ -8,24 +8,51 @@ JSON_BUFFER_LINES=${JSON_BUFFER_LINES:-256}
     exit 1
 }
 
-function emit() {
+function emit_json_string_chunk() {
   if [[ ${#lines[@]} == 0 ]]; then return; fi
   local buff IFS=''
   chunk="${lines[*]}"
   out=buff encode_json_strings "$chunk"
+  if [[ $string_started != true ]]; then printf '"'; string_started=true; fi
   echo -n "${buff[0]:1:-1}" # strip the quotes — we're emitting one string
   lines=()
 }
 
-lines=()
- # Read input with cat, and start it via coproc so that we can react if it errors.
-coproc CAT { cat -- "$@"; }
-cat_pid=$CAT_PID
-printf '"'
-# Populate the lines array from the cat process, and call emit produce output
-readarray <&"${CAT[0]:?}" -C emit -c "${JSON_BUFFER_LINES:?}" lines
-emit  # there can be lines remaining
-printf '"\n'
+# echo stdin to stdout as a JSON string
+function cat_json_string() {
+  # Populate the lines array from stdin, and call emit produce output whenever
+  # enough input has been buffered.
+  readarray -C emit_json_string_chunk -c "${JSON_BUFFER_LINES:?}" lines
+  emit_json_string_chunk  # there can be lines remaining
+  if [[ $string_started == true ]]; then printf '"\n'
+  else return 2; fi # no input received
+}
 
-# Fail if cat failed (e.g. missing file)
-wait $cat_pid || { status=$?; echo "$0: failed to read input" >&2; exit $status; }
+if [[ ${1:-} =~ ^(-h|--help)$ ]]; then
+  cat <<EOT
+Like cat but output a single JSON string containing all input.
+
+Usage:
+  $0 [<file>...]
+
+Examples:
+  $ printf 'foo\nbar\n' | $0
+  "foo\nbar\n"
+EOT
+  exit 0
+fi
+
+lines=(); string_started=false; statuses=(0 0)
+
+cat -- "$@" | cat_json_string || statuses=("${PIPESTATUS[@]}")
+
+if [[ ${statuses[0]} != 0 ]]; then
+  echo "$0: failed to read input" >&2; exit "${statuses[0]}";
+elif [[ ${statuses[1]} == 2 ]]; then
+  # No input received. We still emit an empty string for consistency. We don't
+  # do that in cat_json_string because if cat fails before it produces output
+  # we want to fail cleanly without emitting an empty string.
+  echo '""'; exit 0
+elif [[ ${statuses[1]} != 0 ]]; then
+  echo "$0: failed to encode string" >&2; exit "${statuses[1]}";
+fi
