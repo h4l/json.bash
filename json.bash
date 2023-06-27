@@ -189,6 +189,96 @@ function json.encode_raw() {
   esac
 }
 
+function json.start_json_validator() {
+  if [[ ${_json_validator_pids[$$]:-} != "" ]]; then return 0; fi
+
+  # This is a PCRE regex that matches JSON. This is possible because we use
+  # PCRE's recursive patterns to match JSON's nested constructs. And also
+  # possessive repetition quantifiers to prevent expensive backtracking on match
+  # failure. Backtracking is not required to parse JSON as it's not ambiguous.
+  # If a rule fails to match, the input is known to be invalid, there's no
+  # possibility of an alternate rule matching, so backtracking is pointless.
+  string='(?<str> " (?:
+    [\x20-\x21\x23-\x5B\x5D-\xFF]
+    | \\ (?: ["\\/bfnrt] | u [A-Fa-f0-9]{4} )
+  )*+ " )'
+  number='-?+ (?: 0 | [1-9][0-9]*+ ) (?: \. [0-9]*+ )?+ (?: [eE][+-]?+[0-9]++ )?+'
+  atom="true | false | null | ${number:?} | ${string:?}"
+  array='\[ (?: (?&json) (?: , (?&json) )*+ )?+ \]'
+  object='\{ (?: (?<entry> (?&str) : (?&json) ) (?: , (?&entry) )*+ )?+ \}'
+  json="(?<json> ${array:?} | ${object:?} | ${atom:?} )"
+
+  validation_request="
+    ^ [\w]++ (?:
+      (?=
+        (?<pair> : (?&pair)?+ \x1E ${json:?} ) $
+      ) :++
+    )?+"
+
+  { coproc json_validator ( grep --null-data --only-matching --line-buffered \
+    -P -e "${validation_request//[$' \n']/}" )
+  } 2>/dev/null  # hide interactive job control PID output
+  _json_validator_pids[$$]=json_validator_PID
+
+  # Bash only allows 1 coproc per bash process, so by creating a coproc we would
+  # normally prevent another things in this process from creating one. We can
+  # avoid this restriction by duplicating the coproc's pipe FDs to new ones, and
+  # closing the originals. (See https://stackoverflow.com/a/47213971/693728 and
+  # https://lists.gnu.org/archive/html/help-bash/2021-03/msg00207.html .) To
+  # prevent forked shells using this process's coprocess, we store the new FDs
+  # in an array indexed by PID, so we only use FDs owned by our process.
+  # shellcheck disable=SC1083,SC2102
+  exec {_json_validator_out_fds[$$]}<&"${json_validator[0]}"- \
+       {_json_validator_in_fds[$$]}>&"${json_validator[1]}"-
+}
+
+function json.check_json_validator_running() {
+  if [[ ${_json_validator_pids[$$]:-} != "" ]] \
+    && ! kill -0 "${_json_validator_pids[$$]}" 2>/dev/null; then
+    unset "_json_validator_pids[$$]"
+    return 1 # expected to be alive, but dead
+  fi
+  return 0 # alive or not expected to be alive
+}
+
+function json.validate() {
+  if [[ ${_json_validator_pids[$$]:-} == "" ]];
+  then json.start_json_validator; fi
+
+  let "_json_validate_id=${_json_validate_id:-0}+1"; local id=$_json_validate_id
+  local count_markers IFS # delimit JSON with Record Separator
+  # Send a null-terminated JSON validation request to the validator process and
+  # read the response to determine if the JSON was valid.
+  if [[ $# == 0 ]]; then
+    local -n _validate_json_in="${in:?$_json_in_err}"
+    if [[ ${#_validate_json_in[@]} == 0 ]]; then return 0; fi
+    printf -v count_markers ':%.0s' "${!_validate_json_in[@]}"
+    IFS=$'\x1E'; printf '%d%s\x1E%s\x00' "${id:?}" "${count_markers?}" \
+      "${_validate_json_in[*]}" >&"${_json_validator_in_fds[$$]:?}"
+  else
+    IFS=''; count_markers=${*/*/:}
+    IFS=$'\x1E'; printf '%d%s\x1E%s\x00' "${id:?}" "${count_markers?}" \
+      "$*" >&"${_json_validator_in_fds[$$]:?}"
+  fi
+
+  IFS=''
+  if ! read -ru "${_json_validator_out_fds[$$]:?}" -t 4 -d '' response; then
+    if ! json.check_json_validator_running; then
+      echo "json.bash: json validator coprocess unexpectedly died" >&2
+      return 2
+    fi
+    echo "json.validate: failed to read json validator response: $? ${response@Q}" >&2
+    return 2
+  fi
+  if [[ $response != "${id:?}${count_markers?}" ]]; then
+    if [[ $response != "${id:?}"* ]]; then
+      echo "json.validate: mismatched validator response ID: ${id@A}," \
+        "${response@A}" >&2; return 2
+    fi
+    return 1
+  fi
+}
+
 # Encode arguments as JSON objects or arrays and print to stdout.
 #
 # Each argument is an entry in the JSON object or array created by the call.

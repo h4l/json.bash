@@ -586,3 +586,100 @@ expected: $expected
   run "${dir:?}/xxx-array" foo bar
   [[ $status == 0 && $output == '["foo","bar"]' ]]
 }
+
+@test "json validator :: validates valid JSON via arg" {
+  initials=('' 'true' '{}' '[]' '42' '"hi"' 'null')
+  for initial in "${initials[@]}"; do
+    read -ra _initials <<<"$initial" # '' -> (), true -> (true)
+    json.validate "${_initials[@]}" 'true'
+    json.validate "${_initials[@]}" 'false'
+    json.validate "${_initials[@]}" 'null'
+    json.validate "${_initials[@]}" '42'
+    json.validate "${_initials[@]}" '"abc"'
+    json.validate "${_initials[@]}" '[]'
+    json.validate "${_initials[@]}" '[-1.34e+4,2.1e-4,2e6]'
+    json.validate "${_initials[@]}" '{}'
+    json.validate "${_initials[@]}" '{"foo":{"bar":["baz"]}}'
+  done
+}
+
+@test "json validator :: validates valid JSON via array" {
+  in=input
+  input=(); json.validate
+
+  initials=('' 'true' '{}' '[]' '42' '"hi"' 'null')
+  for initial in "${initials[@]}"; do
+    read -ra _initials <<<"$initial" # '' -> (), true -> (true)
+    input=("${_initials[@]}" 'true'); json.validate
+    input=("${_initials[@]}" 'false'); json.validate
+    input=("${_initials[@]}" 'null'); json.validate
+    input=("${_initials[@]}" '42'); json.validate
+    input=("${_initials[@]}" '"abc"'); json.validate
+    input=("${_initials[@]}" '[]'); json.validate
+    input=("${_initials[@]}" '[-1.34e+4,2.1e-4,2e6]'); json.validate
+    input=("${_initials[@]}" '{}'); json.validate
+    input=("${_initials[@]}" '{"foo":{"bar":["baz"]}}'); json.validate
+  done
+}
+
+function expect_json_invalid() {
+  if [[ $# == 0 ]]; then return 1; fi
+  if json.validate "$@"; then
+    echo "expect_invalid: example unexpectedly passed validation: ${1@Q}" >&2
+    return 1
+  fi
+}
+
+@test "json validator :: detects invalid JSON via arg" {
+  initials=('' true)
+  for initial in "${initials[@]}"; do
+    read -ra _initials <<<"$initial" # '' -> (), true -> (true)
+    expect_json_invalid "${_initials[@]}" ''
+    expect_json_invalid "${_initials[@]}" 'truex'
+    expect_json_invalid "${_initials[@]}" 'false_'
+    expect_json_invalid "${_initials[@]}" 'nullx'
+    expect_json_invalid "${_initials[@]}" '42a'
+    expect_json_invalid "${_initials[@]}" '"abc'
+    expect_json_invalid "${_initials[@]}" '"ab\z"' # invalid escape
+    expect_json_invalid "${_initials[@]}" '"ab""ab"'
+    expect_json_invalid "${_initials[@]}" '['
+    expect_json_invalid "${_initials[@]}" '[]]'
+    expect_json_invalid "${_initials[@]}" '[][]'
+    expect_json_invalid "${_initials[@]}" '[a]'
+    expect_json_invalid "${_initials[@]}" '{'
+    expect_json_invalid "${_initials[@]}" '{}{}'
+    expect_json_invalid "${_initials[@]}" '{42:true}'
+    expect_json_invalid "${_initials[@]}" '{"foo":}'
+  done
+}
+
+function expect_json_array_invalid() {
+  local input=("$@")
+  if in=input json.validate; then
+    echo "expect_invalid: example unexpectedly passed validation: ${input[*]@Q}" >&2
+    return 1
+  fi
+}
+
+@test "json validator :: detects invalid JSON via array" {
+  expect_json_array_invalid ''
+  initials=('' true)
+  for initial in "${initials[@]}"; do
+    read -ra _initials <<<"$initial" # '' -> (), true -> (true)
+    expect_json_array_invalid "${_initials[@]}" 'truex'
+    expect_json_array_invalid "${_initials[@]}" 'false_'
+    expect_json_array_invalid "${_initials[@]}" 'nullx'
+    expect_json_array_invalid "${_initials[@]}" '42a'
+    expect_json_array_invalid "${_initials[@]}" '"abc'
+    expect_json_array_invalid "${_initials[@]}" '"ab\z"' # invalid escape
+    expect_json_array_invalid "${_initials[@]}" '"ab""ab"'
+    expect_json_array_invalid "${_initials[@]}" '['
+    expect_json_array_invalid "${_initials[@]}" '[]]'
+    expect_json_array_invalid "${_initials[@]}" '[][]'
+    expect_json_array_invalid "${_initials[@]}" '[a]'
+    expect_json_array_invalid "${_initials[@]}" '{'
+    expect_json_array_invalid "${_initials[@]}" '{}{}'
+    expect_json_array_invalid "${_initials[@]}" '{42:true}'
+    expect_json_array_invalid "${_initials[@]}" '{"foo":}'
+  done
+}
