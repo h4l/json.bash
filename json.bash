@@ -62,7 +62,8 @@ function json.encode_strings() {
       _jes_escape=${_json_bash_escapes[$_jes_literal]:?}
       _jes_string=${_jes_string//$_jes_literal/$_jes_escape}
     done
-    json.buffer_output "$_jes_string"
+    if [[ ${out:-} == '' ]]; then echo -n "$_jes_string"
+    else local -n _jes_out=${out:?}; _jes_out+=("$_jes_string"); fi
     return;;
   (0)
     local -n _in=${in:?"$_json_in_err"}
