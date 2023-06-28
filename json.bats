@@ -12,26 +12,64 @@ function mktemp_bats() {
   mktemp "${BATS_RUN_TMPDIR:?}/json.bats.XXX" "$@"
 }
 
-@test "json.buffer_output" {
-  [[ $(json.buffer_output) == "" ]]
+@test "json.buffer_output :: out stream :: in args" {
   [[ $(json.buffer_output foo) == "foo" ]]
-  [[ $(json.buffer_output foo bar) == "foobar" ]]
+  [[ $(json.buffer_output foo "bar baz" $'boz\n123') == $'foobar bazboz\n123' ]]
+}
 
-  local buff
-  out=buff json.buffer_output
+@test "json.buffer_output :: out stream :: in array" {
+  local input=(foo)
+  [[ $(in=input json.buffer_output) == "foo" ]]
+  input=(foo "bar baz" $'boz\n123')
+  [[ $(in=input json.buffer_output) == $'foobar bazboz\n123' ]]
+}
+
+@test "json.buffer_output :: out array :: in array" {
+  local buff input=()
+  out=buff in=input json.buffer_output
   [[ ${#buff[@]} == 0 ]]
 
-  out=buff json.buffer_output foo
+  input=(foo)
+  out=buff in=input json.buffer_output
   [[ ${#buff[@]} == 1 && ${buff[0]} == "foo" ]]
 
-  out=buff json.buffer_output bar $'baz\nboz'
-  [[ ${#buff[@]} == 3 && ${buff[0]} == "foo" && ${buff[1]} == "bar" \
-    && ${buff[2]} == $'baz\nboz' ]]
+  input=("bar baz" $'boz\n123')
+  out=buff in=input json.buffer_output
+  [[ ${#buff[@]} == 3 && ${buff[0]} == "foo" && ${buff[1]} == "bar baz" \
+    && ${buff[2]} == $'boz\n123' ]]
+}
+
+@test "json.buffer_output :: out array :: in args" {
+  local buff input=()
+
+  out=buff json.buffer_output "foo"
+  [[ ${#buff[@]} == 1 && ${buff[0]} == "foo" ]]
+
+  out=buff json.buffer_output "bar baz" $'boz\n123'
+  [[ ${#buff[@]} == 3 && ${buff[0]} == "foo" && ${buff[1]} == "bar baz" \
+    && ${buff[2]} == $'boz\n123' ]]
+}
+
+@test "json.buffer_output :: errors" {
+  local buff
+  # in=arrayname must be set when 0 args are passed. Explicitly calling with 0
+  # args is a no-op, and when calling with dynamic args an array ref should be
+  # used for efficiency.
+  run json.buffer_output
+  [[ $status == 1 \
+    && $output == *"in: in= must be set when no positional args are given" ]]
+
+  out=buff run json.buffer_output
+  [[ $status == 1 \
+    && $output == *"in: in= must be set when no positional args are given" ]]
 }
 
 @test "json.encode_strings" {
+  run json.encode_strings
+  [[ $status == 1 \
+    && $output == *"in: in= must be set when no positional args are given" ]]
+
   join=,
-  [[ $(json.encode_strings) == '' ]]
   [[ $(json.encode_strings "") == '""' ]]
   [[ $(json.encode_strings foo) == '"foo"' ]]
   [[ $(json.encode_strings foo $'bar\nbaz\tboz\n') == '"foo","bar\nbaz\tboz\n"' ]]
@@ -39,7 +77,8 @@ function mktemp_bats() {
     ==  $'"foo"\n"bar\\nbaz\\tboz\\n"' ]]
 
   local buff=()
-  out=buff json.encode_strings
+  empty=()
+  out=buff in=empty json.encode_strings
   [[ ${buff[*]} == "" ]]
 
   buff=()
@@ -55,6 +94,13 @@ function mktemp_bats() {
 
   out=buff join=, json.encode_strings abc def
   [[ ${#buff[@]} == 5 && ${buff[4]} == '"abc","def"' ]]
+
+  local input=()
+  in=input run json.encode_strings
+  [[ $status == 0 && $output == '' ]]
+
+  input=(foo $'bar\nbaz\tboz\n')
+  [[ $(in=input json.encode_strings) == '"foo","bar\nbaz\tboz\n"' ]]
 }
 
 # A string containing all bytes (other than 0, which bash can't hold in vars)
@@ -99,10 +145,17 @@ if actual != expected:
 }
 
 @test "json.encode_numbers" {
+  run json.encode_numbers
+  [[ $status == 1 \
+    && $output == *"in: in= must be set when no positional args are given" ]]
+
   join=,
-  [[ $(json.encode_numbers) == "" ]]
   [[ $(json.encode_numbers 42) == "42" ]]
   [[ $(json.encode_numbers -1.34e+4 2.1e-4 2e6) == "-1.34e+4,2.1e-4,2e6" ]]
+
+  local input=(-1.34e+4 2.1e-4 2e6)
+  [[ $(in=input json.encode_numbers) == "-1.34e+4,2.1e-4,2e6" ]]
+
   run json.encode_numbers foo bar
   [[ $status == 1 ]]
   [[ $output == "json.encode_numbers(): not all inputs are numbers: 'foo' 'bar'" ]]
@@ -118,11 +171,18 @@ if actual != expected:
 }
 
 @test "json.encode_bools" {
+  run json.encode_bools
+  [[ $status == 1 \
+    && $output == *"in: in= must be set when no positional args are given" ]]
+
   join=,
-  [[ $(json.encode_bools) == "" ]]
   [[ $(json.encode_bools true) == "true" ]]
   [[ $(json.encode_bools false) == "false" ]]
   [[ $(json.encode_bools false true) == "false,true" ]]
+
+  local input=(false true)
+  [[ $(in=input json.encode_bools) == "false,true" ]]
+
   run json.encode_bools foo bar
   [[ $status == 1 ]]
   [[ $output == "json.encode_bools(): not all inputs are bools: 'foo' 'bar'" ]]
@@ -138,10 +198,17 @@ if actual != expected:
 }
 
 @test "json.encode_nulls" {
+  run json.encode_nulls
+  [[ $status == 1 \
+    && $output == *"in: in= must be set when no positional args are given" ]]
+
   join=,
-  [[ $(json.encode_nulls) == "" ]]
   [[ $(json.encode_nulls null) == "null" ]]
   [[ $(json.encode_nulls null null) == "null,null" ]]
+
+  local input=(null null)
+  [[ $(in=input json.encode_nulls) == "null,null" ]]
+
   run json.encode_nulls foo bar
   [[ $status == 1 ]]
   [[ $output == "json.encode_nulls(): not all inputs are nulls: 'foo' 'bar'" ]]
@@ -157,8 +224,11 @@ if actual != expected:
 }
 
 @test "json.encode_autos" {
+  run json.encode_autos
+  [[ $status == 1 \
+    && $output == *"in: in= must be set when no positional args are given" ]]
+
   join=,
-  [[ $(json.encode_autos) == '' ]]
   [[ $(json.encode_autos 42) == '42' ]]
   [[ $(json.encode_autos hi) == '"hi"' ]]
   [[ $(json.encode_autos true) == 'true' ]]
@@ -169,6 +239,9 @@ if actual != expected:
   [[ $(json.encode_autos foo '"42' foo '"42') == '"foo","\"42","foo","\"42"' ]]
   [[ $(json.encode_autos foo ',"42' foo ',"42') == '"foo",",\"42","foo",",\"42"' ]]
 
+  local input=(foo ',"42' foo ',"42')
+  [[ $(in=input json.encode_autos) == '"foo",",\"42","foo",",\"42"' ]]
+
   local buff=()
   out=buff join= json.encode_autos null
   out=buff join= json.encode_autos hi 42
@@ -178,12 +251,18 @@ if actual != expected:
 }
 
 @test "json.encode_raws" {
+  run json.encode_raws
+  [[ $status == 1 \
+    && $output == *"in: in= must be set when no positional args are given" ]]
+
   join=,
-  [[ $(json.encode_raws) == '' ]]
   [[ $(json.encode_raws '{}') == '{}' ]]
   # invalid JSON is not checked/detected
   [[ $(json.encode_raws '}') == '}' ]]
   [[ $(json.encode_raws '[]' '{}') == '[],{}' ]]
+
+  local input=('[]' '{}')
+  [[ $(in=input json.encode_raws) == '[],{}' ]]
 
   run json.encode_raws ''
   echo $output >&2
