@@ -15,7 +15,7 @@ JSON_BUFFER_LINES=${JSON_BUFFER_LINES:-256}
 
 function emit() {
   if [[ ${#lines[@]} == 0 ]]; then return; fi
-  join=$'\n' out= in=lines "json.encode_${JSON_TYPE}s"
+  join=$'\n' out= in=lines "json.encode_${JSON_TYPE}"
   printf '\n'
   lines=()
 }

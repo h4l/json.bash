@@ -47,7 +47,7 @@ function json.buffer_output() {
 # common usage patterns while supporting output of arrays. The common cases are
 # a single string and multiple strings joined by , for arrays, or : for
 # key:value object entries.
-function json.encode_strings() {
+function json.encode_string() {
   local _jes_string _jes_strings _jes_joined _jes_literal _jes_escape
   # TODO: if out is empty we could nameref string to out to avoid a copy at the end
   case $# in
@@ -97,7 +97,7 @@ function json.encode_strings() {
   fi
 }
 
-function json._encode_values() {
+function json._encode_value() {
   local _jev_values _jev_join=${join:-,}
   # escape the join char (no-op unless input is invalid)
   if [[ $# == 0 ]]; then
@@ -110,40 +110,40 @@ function json._encode_values() {
   local IFS; IFS=${_jev_join:?}; joined="${_jev_values[*]}";
   if [[ ! "${_jev_join}$joined" =~ \
          ^(${_jev_join}(${value_pattern:?}))+$ ]]; then
-    echo "json.encode_${type_name:?}(): not all inputs are ${type_name:?}:\
-$(printf " '%s'" "$@")" >&2
+    echo "json.encode_${type_name/%s/}(): not all inputs are ${type_name:?}:\
+$(printf " '%s'" "${_jev_values[@]}")" >&2
     return 1
   fi
   if [[ ${join:-} == '' ]]; then in=_jev_values json.buffer_output
   else IFS=${join}; json.buffer_output "$joined"; fi
 }
 
-function json.encode_numbers() {
+function json.encode_number() {
   type_name=numbers value_pattern=${_json_bash_number_pattern:?} \
-    json._encode_values "$@"
+    json._encode_value "$@"
 }
 
-function json.encode_bools() {
-  type_name=bools value_pattern="true|false" json._encode_values "$@"
+function json.encode_bool() {
+  type_name=bools value_pattern="true|false" json._encode_value "$@"
 }
 
-function json.encode_falses() {
-  type_name=false value_pattern="false" json._encode_values "$@"
+function json.encode_false() {
+  type_name=false value_pattern="false" json._encode_value "$@"
 }
 
-function json.encode_trues() {
-  type_name=true value_pattern="true" json._encode_values "$@"
+function json.encode_true() {
+  type_name=true value_pattern="true" json._encode_value "$@"
 }
 
-function json.encode_nulls() {
-  type_name=nulls value_pattern="null" json._encode_values "$@"
+function json.encode_null() {
+  type_name=null value_pattern="null" json._encode_value "$@"
 }
 
-function json.encode_autos() {
+function json.encode_auto() {
   if [[ $# == 1 ]]; then
     if [[ \"$1\" =~ ^$_json_bash_auto_pattern$ ]]; then
       json.buffer_output "$1"
-    else json.encode_strings "$1"; fi
+    else json.encode_string "$1"; fi
     return
   fi
 
@@ -153,7 +153,7 @@ function json.encode_autos() {
   # probably quite slow for large arrays.
   # TODO: Add a conditional branch to implement this with & ref substitutions
   local _jea_strings __jea_autos
-  out=_jea_strings join='' json.encode_strings "$@"
+  out=_jea_strings join='' json.encode_string "$@"
   __jea_autos=("${_jea_strings[@]//$_json_bash_auto_glob/}")
   for ((i=0; i < ${#_jea_strings[@]}; ++i)); do
     if [[ ${#__jea_autos[$i]} == 0 ]];
@@ -168,7 +168,7 @@ function json.encode_autos() {
   fi
 }
 
-function json.encode_raws() {
+function json.encode_raw() {
   # Caller is responsible for ensuring values are valid JSON!
   if [[ $# == 0 ]]; then
     local -n _jer_in=${in:?"$_json_in_err"};
@@ -265,15 +265,15 @@ function json() {
 
     # Handle the common object string value case a little more efficiently
     if [[ $_type == string && $_json_return == object && $_array == false ]]; then
-      join=':' json.encode_strings "$_key" "$_value" || return 1
+      join=':' json.encode_string "$_key" "$_value" || return 1
       continue
     fi
 
     if [[ $_json_return == object ]]; then
-      json.encode_strings "$_key" || return 1
+      json.encode_string "$_key" || return 1
       json.buffer_output ":"
     fi
-    _encode_fn="json.encode_${_type:?}s"
+    _encode_fn="json.encode_${_type:?}"
     local _status=0
     if [[ $_array == true ]]; then
       json.buffer_output "["

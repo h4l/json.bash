@@ -12,7 +12,7 @@ function emit_json_string_chunk() {
   if [[ ${#lines[@]} == 0 ]]; then return; fi
   local buff IFS=''
   chunk="${lines[*]}"
-  out=buff json.encode_strings "$chunk"
+  out=buff json.encode_string "$chunk"
   if [[ $string_started != true ]]; then printf '"'; string_started=true; fi
   echo -n "${buff[0]:1:-1}" # strip the quotes — we're emitting one string
   lines=()

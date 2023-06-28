@@ -14,11 +14,11 @@ inputs=("$@")
 case $JSON_TYPE in
 (string|auto) # these can't fail, so we can output them straight to stdout
   echo -n '['
-  out= join=, in=inputs "json.encode_${JSON_TYPE}s"
+  out= join=, in=inputs "json.encode_${JSON_TYPE}"
   echo ']'
 ;;
 (*) # these can fail for invalid inputs, so we need to output only on success
-  out=values join=, in=inputs "json.encode_${JSON_TYPE}s"
+  out=values join=, in=inputs "json.encode_${JSON_TYPE}"
   echo "[${values[0]}]"
 ;;
 esac
