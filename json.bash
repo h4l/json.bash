@@ -189,6 +189,26 @@ function json.encode_raw() {
   esac
 }
 
+function json.encode_json() {
+  if ! json.validate "$@"; then
+    if [[ $# == 0 ]]; then local -n _jej_in=${in:?"$_json_in_err"};
+    else local _jej_in=("$@"); fi
+    echo "json.encode_json(): not all inputs are valid JSON:\
+$(printf " %s" "${_jej_in[@]@Q}")" >&2
+    return 1
+  fi
+
+  case $#:${join:-}:${in:-} in
+  (*::*)
+    json.buffer_output "$@";;
+  (0:*)
+    local -n _jej_in=${in:?"$_json_in_err"}
+    local IFS=${join:?}; json.buffer_output "${_jej_in[*]}";;
+  (*)
+    local IFS=${join:?}; json.buffer_output "$*";;
+  esac
+}
+
 function json.start_json_validator() {
   if [[ ${_json_validator_pids[$$]:-} != "" ]]; then return 0; fi
 

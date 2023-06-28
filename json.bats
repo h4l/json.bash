@@ -277,6 +277,73 @@ if actual != expected:
   [[ ${#buff[@]} == 4 && ${buff[0]} == '1' && ${buff[1]} == '2' \
     && ${buff[2]} == '3' && ${buff[3]} == $'4\n5' ]]
 }
+@test "json.encode_json :: in must be set with no args" {
+  run json.encode_json
+  [[ $status == 1 \
+    && $output == *"in: in= must be set when no positional args are given" ]]
+}
+
+@test "json.encode_json" {
+  local join=','
+  [[ $(json.encode_json '{}') == '{}' ]]
+  [[ $(json.encode_json '{"foo":["bar","baz"]}') == '{"foo":["bar","baz"]}' ]]
+  [[ $(json.encode_json '[123]') == '[123]' ]]
+  [[ $(json.encode_json '"hi"') == '"hi"' ]]
+  [[ $(json.encode_json '-1.34e+4') == '-1.34e+4' ]]
+  [[ $(json.encode_json 'true') == 'true' ]]
+  [[ $(json.encode_json 'null') == 'null' ]]
+  [[ $(json.encode_json '{"a":1}' '{"b":2}') == '{"a":1},{"b":2}' ]]
+
+  join=''
+  [[ $(json.encode_json 'true' '42') == 'true42' ]]
+
+  local buff=() input=()
+  out=buff in=input json.encode_json
+  [[ ${#buff[@]} == 0 ]]
+
+  input=(42 '"hi"')
+  out=buff in=input json.encode_json
+  [[ ${#buff[@]} == 2 && ${buff[0]} == '42' && ${buff[1]} == '"hi"' ]]
+
+  join=','
+  out=buff in=input json.encode_json
+  declare -p buff
+  [[ ${#buff[@]} == 3 && ${buff[0]} == '42' && ${buff[1]} == '"hi"' \
+    && ${buff[2]} == '42,"hi"' ]]
+}
+
+@test "json.encode_json :: recognises valid JSON with insignificant whitespace" {
+  local buff
+  out=buff json.encode_json ' { "foo" : [ "bar" , 42 ] , "baz" : true } '
+  [[ ${#buff[@]} == 1 \
+    && ${buff[0]} == ' { "foo" : [ "bar" , 42 ] , "baz" : true } ' ]]
+}
+
+@test "json.encode_json :: rejects invalid JSON" {
+  invalid_json=('{:}' ' ' '[' '{' '"foo' '[true false]')
+
+  for invalid in "${invalid_json[@]}"; do
+    run json.encode_json ''
+    [[ $status == 1 \
+      && $output == *"json.encode_json(): not all inputs are valid JSON:"* ]]
+
+    run json.encode_json "${invalid:?}"
+    [[ $status == 1 \
+      && $output == *"json.encode_json(): not all inputs are valid JSON:"* ]]
+
+    run json.encode_json '"ok"' "${invalid:?}"
+    [[ $status == 1 \
+      && $output == *"json.encode_json(): not all inputs are valid JSON:"* ]]
+
+    run json.encode_json "${invalid:?}" '"ok"'
+    [[ $status == 1 \
+      && $output == *"json.encode_json(): not all inputs are valid JSON:"* ]]
+
+    local -i tests+=4
+  done
+
+  (( ${tests:?} == 4 * 6 ))
+}
 
 # Assert JSON on stdin matches JSON given as the first argument.
 function equals_json() {
@@ -625,7 +692,7 @@ expected: $expected
 @test "json validator :: validates JSON with insignificant whitespace" {
   local ws_chars=($' \t\n\r')
   for i in 0 1 2 3; do
-    spaced_json_template=' { "a" : [ "c" , 0 ] , "b" : null } '
+    spaced_json_template=' { "a" : [ "c" , [ { } ] ] , "b" : null } '
     ws="${ws_chars:$i:1}"
     spaced_json=${spaced_json_template// /"${ws:?}"}
     json.validate "${spaced_json:?}"
