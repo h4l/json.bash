@@ -317,19 +317,34 @@ function json.validate() {
 #   json entry:object={"name":"Bob"} # {"entry":{"name":"Bob"}}
 #   data=(4 8 16); json numbers:number[]=@data # {"numbers":[4,8,16]}
 #   json @bar:string@foo bar:string="asdfsd"
+#   json people:json[]@=/tmp/people
+#   json people:json[\n]@=/tmp/people
+#   json people:json[split=\n,]@=/tmp/people
+#   json values:number[split=" "]="123 457 123"
+#   json values:number[split=" ",trim=false]="123 457 123"
 #
-#   argument     = [ key ] [ type ] [ value ]
+#   argument     = [ key ] [ type ] [ attributes ] [ value ]
 #   value        = inline-value | ref-value
 #   key          = inline-key | ref-key
 #
 #   type         = ":" ( "string" | "number" | "bool" | "true" | "false"
-#                      | "null" | "raw" | "auto" ) [ "[]" ]
+#                      | "null" | "raw" | "auto" )
 #
-#   inline-key   = /^([^:=@-][^:=@]*)?/
-#   inline-value = /^=.*/
-#   ref-key      = "@" ref-name
-#   ref-value    = "@=" ref-name
-#   ref-name     = /^[a-zA-Z0-9]\w*/
+#   inline-key   = [ ( /^[^:=@[-]/ | escaped-char ) key-token ]
+#   ref-key      = "@" key-token
+#   key-token    = *( /^[^:=@[]*/ | escaped-char )
+
+#   inline-value = /^=.*/                   # escape sequences are not expanded
+#   ref-value    = "@" inline-value
+#
+#   attributes   = "[" [ attr *( "," attr ) ] "]"
+#   attr         = attr-name [ "=" attr-value ]
+#   attr-name    = *( /^[^],\=]/ | escaped-char )  # ] , \ = must be escaped
+#   attr-value   = *( /^[^],\]/  | escaped-char )  # ] , \   must be escaped
+#                # Escape sequences supported by echo -e, plus :=[]@-, (our own
+#                # reserved characters).
+#   escaped-char = /^ \\ ( [][,\\:-=abceEfnrtv-] | 0[0-7]{0,3} | x[0-9a-fA-F]{1,2}
+#                        | u[0-9a-fA-F]{1,4} | U[0-9a-fA-F]{1,8}) ) /
 #
 function json() {
   # vars referenced by arguments cannot start with _, so we prefix our own vars
