@@ -198,15 +198,19 @@ function json.start_json_validator() {
   # failure. Backtracking is not required to parse JSON as it's not ambiguous.
   # If a rule fails to match, the input is known to be invalid, there's no
   # possibility of an alternate rule matching, so backtracking is pointless.
+  ws='(?<ws> [\x20\x09\x0A\x0D]*+ )'  # space, tab, new line, carriage return
   string='(?<str> " (?:
     [\x20-\x21\x23-\x5B\x5D-\xFF]
     | \\ (?: ["\\/bfnrt] | u [A-Fa-f0-9]{4} )
   )*+ " )'
   number='-?+ (?: 0 | [1-9][0-9]*+ ) (?: \. [0-9]*+ )?+ (?: [eE][+-]?+[0-9]++ )?+'
   atom="true | false | null | ${number:?} | ${string:?}"
-  array='\[ (?: (?&json) (?: , (?&json) )*+ )?+ \]'
-  object='\{ (?: (?<entry> (?&str) : (?&json) ) (?: , (?&entry) )*+ )?+ \}'
-  json="(?<json> ${array:?} | ${object:?} | ${atom:?} )"
+  array='\[  (?: (?&ws) (?&json) (?: (?&ws) , (?&ws) (?&json) )*+ )?+ (?&ws) \]'
+  object='\{ (?:
+    (?<entry> (?&ws) (?&str) (?&ws) : (?&ws) (?&json) )
+    (?: (?&ws) , (?&entry) )*+
+  )?+ (?&ws) \}'
+  json="(?<json> ${ws:?} (?: ${array:?} | ${object:?} | ${atom:?} ) (?&ws) )"
 
   validation_request="
     ^ [\w]++ (?:
