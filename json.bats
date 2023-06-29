@@ -500,39 +500,44 @@ expected: $expected
   ]'
 }
 
-@test "json.bash json nested JSON with raw type" {
-  # Nested objects and arrays are created using the raw type, which allows any
-  # value to be inserted. json.bash doesn't implement a JSON parser, so it
-  # can't validate raw values, other than not allowing empty values. So long as
-  # raw values are created from nested json.bash calls, or known JSON constants,
-  # the result will be valid JSON.
-  json user:raw='{"name":"Bob Bobson"}' \
-    | equals_json '{user: {name: "Bob Bobson"}}'
+@test "json.bash json nested JSON with :json and :raw types" {
+  # Nested objects and arrays are created using the json or raw types. The :raw
+  # type allow any value to be inserted (even invalid JSON), whereas :json
+  # validates the provided value(s) and fails if they're not actually JSON.
+  #
+  # The reason for both is that :json depends on grep (with PCRE) being present,
+  # so :raw can be used in situations where only bash is available, and
+  # validation isn't necessary (e.g. when passing the output of one json.bash
+  # call into another).
 
-  user='{"name":"Bob Bobson"}' json @user:raw \
-    | equals_json '{user: {name: "Bob Bobson"}}'
+  for type in json raw; do
+    json user:$type='{"name":"Bob Bobson"}' \
+      | equals_json '{user: {name: "Bob Bobson"}}'
 
-  user='{"name":"Bob Bobson"}' json "User":raw@=user \
-    | equals_json '{User: {name: "Bob Bobson"}}'
+    user='{"name":"Bob Bobson"}' json @user:$type \
+      | equals_json '{user: {name: "Bob Bobson"}}'
 
-  # Use nested json calls to create nested JSON objects or arrays
-  json user:raw="$(json name="Bob Bobson")" \
-    | equals_json '{user: {name: "Bob Bobson"}}'
+    user='{"name":"Bob Bobson"}' json "User":$type@=user \
+      | equals_json '{User: {name: "Bob Bobson"}}'
 
-  # Variables can hold JSON values to incrementally build larger objects.
-  people=(
-    "$(json name="Bob" pet="Tiddles")"
-    "$(json name="Alice" pet="Frankie")"
-  )
-  json type=people status:raw="$(json created_date=yesterday final:false)" \
-    users:raw[]@=people \
-    | equals_json '{
-        type: "people", status: {created_date: "yesterday", final: false},
-        users: [
-          {name: "Bob", pet: "Tiddles"},
-          {name: "Alice", pet: "Frankie"}
-        ]
-      }'
+    # Use nested json calls to create nested JSON objects or arrays
+    json user:$type="$(json name="Bob Bobson")" \
+      | equals_json '{user: {name: "Bob Bobson"}}'
+
+    # Variables can hold JSON values to incrementally build larger objects.
+    local people=()
+    out=people json name="Bob" pet="Tiddles"
+    out=people json name="Alice" pet="Frankie"
+    json type=people status:$type="$(json created_date=yesterday final:false)" \
+      users:$type[]@=people \
+      | equals_json '{
+          type: "people", status: {created_date: "yesterday", final: false},
+          users: [
+            {name: "Bob", pet: "Tiddles"},
+            {name: "Alice", pet: "Frankie"}
+          ]
+        }'
+  done
 }
 
 @test "json.bash json errors :: do not produce partial JSON output" {
@@ -595,6 +600,20 @@ expected: $expected
   [[ $status == 1 && $output =~ "failed to encode arg='a:bool=a' -> 'a'" ]]
   run json a:null=a
   [[ $status == 1 && $output =~ "failed to encode arg='a:null=a' -> 'a'" ]]
+
+  # Syntax errors in :json type values are errors
+  run json a:json=
+  [[ $status == 1 && $output =~ "failed to encode arg='a:json=' -> ''" \
+    && $output =~ 'json.encode_json(): not all inputs are valid JSON:' ]]
+
+  run json a:json='{"foo":'
+  [[ $status == 1 \
+    && $output =~ "failed to encode arg='a:json={\"foo\":' -> '{\"foo\":'" ]]
+
+  local json_things=('true' '["invalid"')
+  run json a:json[]@=json_things
+  [[ $status == 1 \
+    && $output =~ "failed to encode arg='a:json[]@=json_things' -> 'true' '[\"invalid\"'" ]]
 }
 
 @test "json.bash json non-errors" {

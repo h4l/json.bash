@@ -4,7 +4,7 @@ source json.bash
 # Print a JSON array containing the program's command-line arguments.
 
 JSON_TYPE=${JSON_TYPE:-string}
-[[ $JSON_TYPE =~ ^(string|number|bool|null|true|false|auto)$ ]] || {
+[[ $JSON_TYPE =~ ^(string|number|bool|null|true|false|auto|json)$ ]] || {
     echo "$0: invalid JSON_TYPE: '$JSON_TYPE'" >&2
     exit 1
 }

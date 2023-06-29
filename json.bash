@@ -2,7 +2,7 @@
 shopt -s extglob # required to match our auto glob patterns
 
 JSON_BASH_VERSION=0.1.0
-_json_bash_arg_pattern='^(@(\w+)|([^:=@-][^:=@]*))?(:(auto|bool|false|null|number|raw|string|true)(\[\])?)?(@=(\w+)|=(.*))?$'
+_json_bash_arg_pattern='^(@(\w+)|([^:=@-][^:=@]*))?(:(auto|bool|false|json|null|number|raw|string|true)(\[\])?)?(@=(\w+)|=(.*))?$'
 _json_bash_number_pattern='-?(0|[1-9][0-9]*)(\.[0-9]*)?([eE][+-]?[0-9]+)?'
 _json_bash_auto_pattern="\"(null|true|false|${_json_bash_number_pattern:?})\""
 _json_bash_number_glob='?([-])@(0|[1-9]*([0-9]))?([.]+([0-9]))?([eE]?([+-])+([0-9]))'
