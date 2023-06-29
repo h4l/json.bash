@@ -395,7 +395,7 @@ function json() {
       json.buffer_output "]"
     else "$_encode_fn" "${_value}" || _status=$?; fi
     [[ $_status == 0 ]] \
-      || { echo "json(): failed to encode ${arg@A} -> ${_value@Q}" >&2; return 1; }
+      || { echo "json(): failed to encode ${arg@A} -> ${_value[@]@Q}" >&2; return 1; }
   done
 
   if [[ $_json_return == object ]]; then json.buffer_output "}"
