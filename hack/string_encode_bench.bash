@@ -4,21 +4,31 @@ set -euo pipefail
 source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../json.bash"
 
 count=${COUNT:?}
-out_method=${OUT_METHOD:-echo}
+method=${METHOD:-echo}
 
+readarray -t strings
 
-echo "${count@A} ${out_method@A}" >&2
+echo "${count@A} ${method@A} #strings=${#strings[@]}" >&2
 
-if [[ $out_method == echo ]]; then
+if [[ $method == out=echo,in=args ]]; then
   for ((id=0; id<$count; ++id)) do
-    out= join=, json.encode_strings "$@"
+    out= join=, json.encode_string "${strings[@]}"
   done
-elif [[ $out_method == buffer ]]; then
+elif [[ $method == out=echo,in=array ]]; then
+  for ((id=0; id<$count; ++id)) do
+    out= join=, in=strings json.encode_string
+  done
+elif [[ $method == out=buffer,in=args ]]; then
   for ((id=0; id<$count; ++id)) do
     buffer=()
-    out=buffer json.encode_strings "$@"
+    out=buffer json.encode_string "${strings[@]}"
+  done
+elif [[ $method == out=buffer,in=array ]]; then
+  for ((id=0; id<$count; ++id)) do
+    buffer=()
+    out=buffer in=strings json.encode_string
   done
 else
-  echo "$0: unknown ${out_method@A}" >&2
+  echo "$0: unknown ${method@A}" >&2
   exit 1
 fi
