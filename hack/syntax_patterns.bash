@@ -9,41 +9,40 @@ set -euo pipefail
 # pseudo-grammar notation, I'm not actually using it with any tool.)
 #
 #   argument     = [ key ] [ type ] [ attributes ] [ value ]
-#   value        = inline-value | ref-value
-#   key          = inline-key | ref-key
+#   value        = ref-value | inline-value
+#   key          = ref-key | inline-key
 #
 #   type         = ":" ( "string" | "number" | "bool" | "true" | "false"
 #                      | "null" | "raw" | "auto" )
 #
-#   inline-key   = key-char-not-hyphen *key-char
+#   inline-key   = *key-char
 #   ref-key      = "@" key-char *key-char
-#   key-char     = /^[^\x00-\x1F\\:=@[]/ | escaped-char
-#   key-char-not-hyphen
-#                = /^[^\x00-\x1F\\:=@[-]/ | escaped-char
-
+#   key-char     = /^[^:=@[]/ | key-escape
+#   key-escape   = ( "::" | "==" | "@@" | "[[" )
+#
 #   inline-value = /^=.*/
 #   ref-value    = "@" inline-value
 #
 #   attributes   = "[" [ attr *( "," attr ) ] "]"
 #   attr         = attr-name [ "=" attr-value ]
-#   attr-name    = *( /^[^],\=]/ | escaped-char )  # ] , \ = must be escaped
-#   attr-value   = *( /^[^],\]/  | escaped-char )  # ] , \   must be escaped
-#   escaped-char = /^ \\ ( [][,\\:=abceEfnrtv-] | 0[0-7]{0,3} | x[0-9a-fA-F]{1,2}
-#                        | u[0-9a-fA-F]{1,4} | U[0-9a-fA-F]{1,8}) ) /
+#   attr-name    = *( /^[^],=]/ | attr-name-escape )   # ] , \ = must be escaped
+#   attr-value   = *( /^[^],]/  | attr-value-escape )  # ] , must be escaped
+#
+#   attr-name-escape  = ( "==" | ",," | "]]" )
+#   attr-value-escape = ( ",," | "]]" )
 #
 # Notes:
 # - \x00-\x1F are the control characters
 # - ref-key: can't have an empty value to avoid ambiguity with =value rule.
-# - inline-value: escape sequences are not expanded. This is to make it easy to
-#   append arbitrary content without worrying about escape processing mangling
-#   it. Ideally, only human-written syntax elements should have escapes
-#   processed.
-# - escaped-char: Our escape sequences are those supported by printf %b, plus
-#     :=[]@-, (our own reserved characters, to make it easy to escape them).
-#     Maybe we should limit escape processing to just our own reserved chars.
-#     I was mainly thinking of them being useful to specify the array split
-#     character.
-
+# - Escaping: We use doubles of reserved characters to escape them. e.g. the key
+#   @@foo::bar becomes @foo:bar.
+#
+#   - Escapes only apply in contexts where the characters are reserved. So keys
+#     don't reserve the ] character, and attributes don't reserve the [
+#     character. A natural result of this is that the final values have no
+#     escape sequences, as there are no further syntax elements beyond them that
+#     could conflict.
+#
 # We capture the (non-initial) final escape sequence, so that we can test if any
 # escape sequence occurred, and skip un-escaping if not.
 
@@ -51,30 +50,43 @@ set -euo pipefail
 # Non-ref keys can't start with @ or - .
 # After the start comes zero or more non-reserved chars or escape sequences.
 key=$'
-  (
-    @ ( ( \\\\ [^\x01-\x1f\t\n\v\f\r] ) | [^\x01-\x1f\t\n\v\f\r:=[\\@] )
-    | \\\\ [^\x01-\x1f\t\n\v\f\r]
-    | [^\x01-\x1f\t\n\v\f\r:=[\\@-]
-  )
-  ( ( \\\\ [^\x01-\x1f\t\n\v\f\r] ) | [^\x01-\x1f\t\n\v\f\r:=[\\@] )*
+  ( @ ( :: | == | @@ | \[\[ | [^:=[@] ) )?
+  ( ( :: | == | @@ | \[\[ ) | [^:=[@] )*
 '
 
 type=' : ( auto | bool | false | json | null | number | raw | string | true ) '
 
-# An escape sequence, or anything except \ ] or control chars.
-# We capture the final escape sequence so that we can test if any escape
-# sequence occurred, and skip un-escaping if not.
-attributes=$'
-  \[ ( ( \\\\ [^\x01-\x1f\t\n\v\f\r] ) | [^]\x01-\x1f\t\n\v\f\r\\] )* \]
-'
+# The attributes without matching the individual entries. Anything except  ],
+# except ] can be escaped with ]]. We capture ,, and == escapes so that we can
+# detect if no escapes are present and skip decoding escapes if so.
+attributes=$' \[ ( ( \]\] | ,, | == ) | [^]] )* \] '
 
-value=' @? = (.*) '
+# Don't match or capture the arg value as we can retrieve it with a substring
+# starting from the length of the overall argument match.
+value=' @? = '
 
 argument="
-  ^ ( ${key:?} )? ( ${type:?} )? ( ${attributes:?} )? ( ${value:?} )? $
+  ^ ( ${key:?} )? ( ${type:?} )? ( ${attributes:?} )? ( ${value:?} | $ )
 "
+
+function bash_quote() {
+  local quoted
+  # Force bash to use $'...' syntax by including a non-printable character.
+  val=$'\x01'"$1"
+  printf -v quoted '%q' "${val:?}"
+  if [[ ! $quoted =~ ^\$\'\\001 ]]; then
+    echo "bash_quote(): printf quoted the string in an unexpected way: quoted: ${quoted}, input: ${1@Q}"
+    return 1
+  fi
+  printf '%s' "${quoted/#"$'\001"/"$'"}"
+}
+
+function format_regex_var() {
+  local var=${1:?} regex=${2:?}
+  printf "%s=%s\n" "${var:?}" "$(bash_quote "${regex//[$' \n']/}")"
+}
 
 # Generate the final pattern used in json.bash (run this script and manually
 # insert this output, it doesn't change often.)
-printf "_json_bash_arg_pattern=%q\n" "${argument//[$' \n']/}"
-printf "_json_bash_attr_entry_pattern='%s'\n" "${attr_entry//[$' \n']/}"
+format_regex_var __attributes "${attributes:?}"
+format_regex_var _json_bash_arg_pattern "${argument:?}"
