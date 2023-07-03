@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # shellcheck shell=bash
-set -o pipefail
+set -u -o pipefail
 
 load json.bash
 
@@ -345,6 +345,200 @@ if actual != expected:
   (( ${tests:?} == 4 * 6 ))
 }
 
+@test "json argument pattern :: non-matches" {
+  # A ref key can't be empty, otherwise it would clash with the @=value syntax.
+  # Also, an empty ref is not useful in practice.
+  [[ ! '@' =~ $_json_bash_arg_pattern ]]
+  [[ ! '@:string' =~ $_json_bash_arg_pattern ]]
+}
+
+@test "json argument pattern" {
+  keys=('' '@key' 'key')
+  types=('' ':string')
+  attributes=('' '[]' '[not=parsed,yet]')
+  values=('' '=value' '@=value')
+
+  for key in "${keys[@]}"; do
+  for type in "${types[@]}"; do
+  for attribute in "${attributes[@]}"; do
+  for value in "${values[@]}"; do
+    example="${key}${type}${attribute}${value}"
+    declare -p key type attribute value example
+    [[ $example =~ $_json_bash_arg_pattern ]]
+    declare -p key type attribute value BASH_REMATCH
+    local -n matched_key=BASH_REMATCH[1] \
+      matched_type=BASH_REMATCH[6] \
+      matched_attribute=BASH_REMATCH[8] \
+      matched_value=BASH_REMATCH[11]
+    local matched_length=${#BASH_REMATCH[0]}
+    local matched_value_full="${matched_value}${example:${matched_length:?}}"
+
+    declare -p matched_key matched_type matched_attribute matched_value_full
+
+    [[ $matched_key == "$key" ]]
+    [[ $matched_type == "$type" ]]
+    [[ $matched_attribute == "$attribute" ]]
+    [[ $matched_value_full == "$value" ]]
+  done done done done
+}
+
+function assert_arg_parse() {
+  expected=$(timeout 1 cat)
+  expected=${expected/#+([ $'\n'])/}
+  expected=${expected/%+([ $'\n'])/}
+  local -A attrs
+  out=attrs json.parse_argument "$1" || return 10
+  declare -p attrs
+  local attr_lines=() line
+  for name in "${!attrs[@]}"; do
+    printf -v line "%s = '%s'" "$name" "${attrs[$name]}"
+    attr_lines+=("${line:?}")
+  done
+  sorted_attrs=$(local IFS=$'\n'; LC_ALL=C sort <<<"${attr_lines[*]}")
+  if [[ $expected != "${sorted_attrs}" ]]; then
+    diff -u <(echo "${expected:?}") <(echo "${sorted_attrs}")
+    return 1
+  fi
+}
+
+@test "json.parse_argument" {
+  assert_arg_parse '' <<<""  # no attrs
+  # keys
+  assert_arg_parse a <<<"
+@key = 'str'
+key = 'a'
+"
+  assert_arg_parse @a <<<"
+@key = 'var'
+key = 'a'
+"
+  assert_arg_parse @/ <<<"
+@key = 'file'
+key = '/'
+"
+  assert_arg_parse @./ <<<"
+@key = 'file'
+key = './'
+"
+  assert_arg_parse '@@' <<<"
+@key = 'str'
+key = '@'
+"
+  assert_arg_parse '@@@' <<<"
+@key = 'var'
+key = '@'
+"
+  assert_arg_parse '@@@@' <<<"
+@key = 'str'
+key = '@@'
+"
+  # ] and , are not reserved chars in keys — they're not unescaped
+  assert_arg_parse '@@f]]o,,[[o==bar' <<<"
+@key = 'str'
+key = '@f]]o,,[o=bar'
+"
+  # types
+  assert_arg_parse :json <<<"
+type = 'json'
+"
+  # attributes
+  assert_arg_parse '[]' <<<"
+array = 'true'
+"
+  # bash doesn't allow empty strings to be keys in associative arrays
+  assert_arg_parse '[,]' <<<"
+__empty__ = ''
+array = 'true'
+"
+  assert_arg_parse '[=]' <<<"
+__empty__ = ''
+array = 'true'
+"
+  assert_arg_parse '[=x]' <<<"
+__empty__ = 'x'
+array = 'true'
+"
+  # split on null, like readarray -d ''
+  assert_arg_parse '[split=]' <<<"
+array = 'true'
+split = ''
+"
+  # split char shorthand
+  assert_arg_parse '[,,]' <<<"
+array = 'true'
+split = ','
+"
+  assert_arg_parse '[==]' <<<"
+array = 'true'
+split = '='
+"
+  assert_arg_parse '[]]]' <<<"
+array = 'true'
+split = ']'
+"
+  # split char shorthand does not apply if = is used
+  assert_arg_parse '[x=]' <<<"
+array = 'true'
+x = ''
+"
+  # split char shorthand does apply with subsequent attrs present
+  assert_arg_parse '[x,foo=bar]' <<<"
+array = 'true'
+foo = 'bar'
+split = 'x'
+"
+  # split char shorthand does not apply with preceding attrs
+  assert_arg_parse '[foo=bar,x]' <<<"
+array = 'true'
+foo = 'bar'
+x = ''
+"
+
+  assert_arg_parse = <<<"
+@val = 'str'
+val = ''
+"
+  assert_arg_parse =42 <<<"
+@val = 'str'
+val = '42'
+"
+  assert_arg_parse @= <<<"
+@val = 'var'
+val = ''
+"
+  assert_arg_parse @=x <<<"
+@val = 'var'
+val = 'x'
+"
+  assert_arg_parse @=/ <<<"
+@val = 'file'
+val = '/'
+"
+  assert_arg_parse @=./ <<<"
+@val = 'file'
+val = './'
+"
+  assert_arg_parse @@fo==o:number[,,,a=42]@=./stuff <<<"
+@key = 'str'
+@val = 'file'
+a = '42'
+array = 'true'
+key = '@fo=o'
+split = ','
+type = 'number'
+val = './stuff'
+"
+}
+
+@test "json.parse_argument :: attributes" {
+  local -A attrs=(); out=attrs json.parse_argument '[]'
+  [[ ${#attrs[@]} == 1 && ${attrs[array]} == true ]]
+
+  local -A attrs=(); out=attrs json.parse_argument '[foo,bar=,baz=boz]'
+  [[ ${#attrs[@]} == 4 && ${attrs[array]} == true && ${attrs[foo]} == '' \
+    && ${attrs[bar]} == '' && ${attrs[baz]} == boz ]]
+}
+
 # Assert JSON on stdin matches JSON given as the first argument.
 function equals_json() {
   if (( $# != 1 )); then
@@ -455,9 +649,9 @@ expected: $expected
   # Non-string values need explicit types
   json data:number=42 | equals_json '{data: 42}'
   # The default string type can be changed with json_type
-  json_type=number json data=42 | equals_json '{data: 42}'
+  json_defaults=type=number json data=42 | equals_json '{data: 42}'
   # In which case strings need to be explicitly typed
-  json_type=number json data=42 msg:string=Hi \
+  json_defaults=type=number json data=42 msg:string=Hi \
     | equals_json '{data: 42, msg: "Hi"}'
   # true/false/null have types which don't require redundant values
   json active:true enabled:false data:null \
@@ -471,7 +665,7 @@ expected: $expected
   # The auto type outputs true/false/null and number values. You can opt into
   # this globally by exporting json_type=auto as an environment variable.
   # JSON object and array values are not parsed with auto, only simple values.
-  json_type=auto json a=42 b="Hi" c=true d=false e=null f=[] g={} \
+  json_defaults=type=auto json a=42 b="Hi" c=true d=false e=null f=[] g={} \
     | equals_json '{a: 42, b: "Hi", c: true, d: false, e: null,
                     f: "[]", g: "{}"}'
   # auto can be used selectively like other types
@@ -482,9 +676,33 @@ expected: $expected
 @test "json.bash json array types" {
   # Arrays of values can be created using the [] suffix with each type
   json sizes:number[]=42 | equals_json '{sizes: [42]}'
-  # Values set in arguments can only create arrays of 1 element
-  json names:string[]=Bob | equals_json '{names: ["Bob"]}'
-  # To create arrays of variable length, use a bash array
+
+  # The value is split on the character inside the []
+  json names[:]="Alice:Bob:Dr Chris" \
+    | equals_json '{names: ["Alice", "Bob", "Dr Chris"]}'
+
+  # Inline values are not split unless a character is provided
+  json sizes[]="$(seq 3)" | equals_json '{sizes: ["1\n2\n3"]}'
+  json sizes:number[$'\n']="$(seq 3)" | equals_json '{sizes: [1, 2, 3]}'
+
+  # But file references use each line as a value by default
+  # (Note that <(seq 3) is a shell construct (process substitution) that
+  # produces a file containing 1 2 3 on separate lines.)
+  json sizes:number[]@=<(seq 3) | equals_json '{sizes: [1, 2, 3]}'
+
+  # [:] is shorthand for [split=:]
+  json names[split=:]="Alice:Bob:Dr Chris" \
+    | equals_json '{names: ["Alice", "Bob", "Dr Chris"]}'
+  # The last split value wins when used more than once
+  json sizes:number[:,split=!,split=/]=1/2/3 | equals_json '{sizes: [1, 2, 3]}'
+
+  # To split on null bytes, use split= (empty string). When used with inline and
+  # bash values this effectively inhibits splitting, because bash variables
+  # can't contain null bytes.
+  printf 'AB\nCD\x00EF\nGH\n\x00' | json nullterm[split=]@=/dev/stdin \
+    | equals_json '{nullterm: ["AB\nCD", "EF\nGH\n"]}'
+
+  # @var references can be bash arrays
   names=("Bob Bobson" "Alice Alison")
   sizes=(42 55)
   json @names:string[] @sizes:number[] | equals_json '{
@@ -498,6 +716,9 @@ expected: $expected
     [null],
     [true]
   ]'
+  # empty inline values are empty arrays
+  json str:string[]= num:number[]= bool:bool[]= raw:raw[]= json:json[]= \
+    | equals_json '{str: [], num: [], bool: [], raw: [], json: []}'
 }
 
 @test "json.bash json nested JSON with :json and :raw types" {
@@ -540,6 +761,48 @@ expected: $expected
   done
 }
 
+@test "json.bash file references" {
+  tmp=$(mktemp_bats -d); cd "${tmp:?}"
+  printf 'orange #3\nblue #5\n' > colours
+
+  # The @... syntax can be used to reference the content of files. If an @ref
+  # starts with / or ./ it's taken to be a file.
+  json my_colours@=./colours | equals_json '{my_colours: "orange #3\nblue #5\n"}'
+  # The final path segment is used as the key if a key isn't set.
+  json @./colours | equals_json '{colours: "orange #3\nblue #5\n"}'
+  # Array values split on newlines
+  json @./colours[] | equals_json '{colours: ["orange #3", "blue #5"]}'
+
+  printf 'apple:pear:grape' > fruit
+  # The file can be split on a different character by naming it in the []
+  json @./fruit[:] | equals_json '{fruit: ["apple", "pear", "grape"]}'
+  json @./fruit[split=:] | equals_json '{fruit: ["apple", "pear", "grape"]}'
+
+  # Split on null by setting split to the empty string
+  printf 'foo\nbar\n\x00bar baz\n\x00' > nullterminated
+  json @./nullterminated[split=] \
+    | equals_json '{nullterminated: ["foo\nbar\n", "bar baz\n"]}'
+
+  # Read from stdin using the special /dev/stdin file
+  seq 3 | json counts:number[]@=/dev/stdin | equals_json '{counts:[1, 2, 3]}'
+
+  # Use process substitution to nest json calls and consume multiple streams.
+  json counts:number[]@=<(seq 3) \
+       people:json[]@=<(json name=Bob; json name=Alice) \
+    | equals_json '{counts:[1, 2, 3], people: [{name: "Bob"},{name: "Alice"}]}'
+  #   Aside: if you're not clear on what's happening here, try $ cat <(seq 3)
+  #   and also $ echo <(seq 3)
+
+  # Files can be referenced indirectly using a variable.
+  # If @var is used and $var is not set, but $var_FILE is, the filename is read
+  # from $var_FILE and the content of the file is used.
+  printf 'secret123' > db_password
+  db_password_FILE=./db_password json @db_password \
+    | equals_json '{db_password: "secret123"}'
+  # (This pattern is commonly used to pass secrets securely via environment
+  # variables.)
+}
+
 @test "json.bash json errors :: do not produce partial JSON output" {
   # No partial output on errors — either json suceeds with output, or fails with
   # no output.
@@ -547,7 +810,7 @@ expected: $expected
   [[ $status == 1 ]]
   # no JSON in output:
   [[ ! $output =~ '{' ]]
-  [[ "$output" == *"failed to encode arg='error:number=notanumber' -> 'notanumber'" ]]
+  [[ "$output" == *"failed to encode value as number: 'notanumber' from 'error:number=notanumber'" ]]
 
   # Same for array output
   local buff=() err=$(mktemp_bats)
@@ -559,23 +822,31 @@ expected: $expected
   [[ ${status:-} == 1 ]]
   [[ ! $(cat "${err:?}") =~ '{' ]]
   [[ $(cat "${err:?}") == \
-    *"failed to encode arg='error:number=notanumber' -> 'notanumber'" ]]
+    *"failed to encode value as number: 'notanumber' from 'error:number=notanumber'" ]]
   [[ ${#buff[@]} == 2 && ${buff[0]} == '{"ok":true}' \
     && ${buff[1]} == '{"garbage":false}' ]]
 }
 
 
+@test "json.bash json option handling" {
+  # Keys can start with -. This will conflict with command-line arguments if we
+  # were to support them.
+  json -a=b | equals_json '{"-a": "b"}'
+  # But we support the common idiom of using a -- argument to disambiguate
+  # options from arguments, so if we add options then this can be used to
+  # future-proof handling of hyphen-prefixed arguments.
+  # Note that the first -- is ignored, but the second is not ignored.
+  json a=x -- -a=y -- --a=z | equals_json '{a:"x","-a":"y","--":"--","--a":"z"}'
+}
+
 @test "json.bash json errors" {
   invalid_args=(
-    # inline keys cannot start with '-' (to prevent clashes with option flags,
-    # although we don't currently have any).
-    -foo
     # inline keys can't contain @
     a@b
     # inline keys can't contain : (basically parsed as an invalid type)
     a:b:string
     # invalid types are not allowed
-    :string[sdfds]
+    :cheese[]
   )
   for arg in "${invalid_args[@]}"; do
     run json "${arg:?}"
@@ -587,33 +858,35 @@ expected: $expected
   # Empty raw values are errors
   run json a:raw=
   [[ $status == 1 && $output =~ "raw JSON value is empty" ]]
-  # And a raw array containing the empty string is an error
-  run json a:raw[]=
-  [[ $status == 1 && $output =~ "raw JSON value is empty" ]]
 
   # Invalid typed values are errors
   run json a:number=a
-  [[ $status == 1 && $output =~ "failed to encode arg='a:number=a' -> 'a'" ]]
+  [[ $status == 1 && $output =~ "failed to encode value as number: 'a' from 'a:number=a'" ]]
   run json a:number[]=a
-  [[ $status == 1 && $output =~ "failed to encode arg='a:number[]=a' -> 'a'" ]]
+  [[ $status == 1 && $output =~ "failed to encode value as number: 'a' from 'a:number[]=a'" ]]
   run json a:bool=a
-  [[ $status == 1 && $output =~ "failed to encode arg='a:bool=a' -> 'a'" ]]
+  [[ $status == 1 && $output =~ "failed to encode value as bool: 'a' from 'a:bool=a'" ]]
   run json a:null=a
-  [[ $status == 1 && $output =~ "failed to encode arg='a:null=a' -> 'a'" ]]
+  [[ $status == 1 && $output =~ "failed to encode value as null: 'a' from 'a:null=a'" ]]
 
   # Syntax errors in :json type values are errors
   run json a:json=
-  [[ $status == 1 && $output =~ "failed to encode arg='a:json=' -> ''" \
-    && $output =~ 'json.encode_json(): not all inputs are valid JSON:' ]]
+  [[ $status == 1 && $output =~ "failed to encode value as json: '' from 'a:json='" \
+    && $output =~ "json.encode_json(): not all inputs are valid JSON: ''" ]]
 
   run json a:json='{"foo":'
   [[ $status == 1 \
-    && $output =~ "failed to encode arg='a:json={\"foo\":' -> '{\"foo\":'" ]]
+    && $output =~ " failed to encode value as json: '{\"foo\":' from 'a:json={\"foo\":'" ]]
 
   local json_things=('true' '["invalid"')
   run json a:json[]@=json_things
   [[ $status == 1 \
-    && $output =~ "failed to encode arg='a:json[]@=json_things' -> 'true' '[\"invalid\"'" ]]
+    && $output =~ "failed to encode value as json: 'true' '[\"invalid\"' from 'a:json[]@=json_things'" ]]
+
+  # references to missing variables are errors
+  run json @__missing
+  [[ $status == 1 && $output =~ \
+    "argument references unbound variable: \$__missing from '@__missing" ]]
 }
 
 @test "json.bash json non-errors" {
@@ -626,21 +899,14 @@ expected: $expected
 
   # type by itself is OK with or without an array marker
   json :string | equals_json '{"": ""}'
-  json :string[] | equals_json '{"": [""]}'
+  json :string[] | equals_json '{"": []}'
 
   # raw arrays with empty values are not checked for or detected.
   raws=('' '')
   [[ $(json a:raw[]@=raws) == '{"a":[,]}' ]]
 
-
   # invalid raw values are not checked for or detected
   [[ $(json a:raw=']  ') == '{"a":]  }' ]]
-
-  # references to missing variables become empty strings
-  json @__missing1@=__missing2 | equals_json '{"": ""}'
-
-  # missing arrays become empty arrays
-  json a:string[]@=__missing | equals_json '{"a": []}'
 }
 
 @test "json.bash CLI :: help" {
