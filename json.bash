@@ -111,7 +111,7 @@ function json._encode_value() {
 
   local IFS; IFS=${_jev_join:?}; joined="${_jev_values[*]}";
   if [[ ! "${_jev_join}$joined" =~ \
-         ^(${_jev_join}(${value_pattern:?}))+$ ]]; then
+         ^(${_jev_join}(${value_pattern:?}))+$ && $joined != '' ]]; then
     echo "json.encode_${type_name/%s/}(): not all inputs are ${type_name:?}:\
 $(printf " '%s'" "${_jev_values[@]}")" >&2
     return 1

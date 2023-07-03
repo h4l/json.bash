@@ -145,15 +145,20 @@ if actual != expected:
 }
 
 @test "json.encode_number" {
+  local buff input join
   run json.encode_number
   [[ $status == 1 \
     && $output == *"in: in= must be set when no positional args are given" ]]
+
+  input=()
+  in=input run json.encode_number
+  [[ $status == 0 && $output == '' ]]
 
   join=,
   [[ $(json.encode_number 42) == "42" ]]
   [[ $(json.encode_number -1.34e+4 2.1e-4 2e6) == "-1.34e+4,2.1e-4,2e6" ]]
 
-  local input=(-1.34e+4 2.1e-4 2e6)
+  input=(-1.34e+4 2.1e-4 2e6)
   [[ $(in=input json.encode_number) == "-1.34e+4,2.1e-4,2e6" ]]
 
   run json.encode_number foo bar
@@ -162,7 +167,7 @@ if actual != expected:
   run json.encode_bool 42,42
   [[ $status == 1 ]]
 
-  local buff=()
+  buff=()
   out=buff join= json.encode_number 1
   out=buff join= json.encode_number 2 3
   out=buff join=$'\n' json.encode_number 4 5
@@ -171,16 +176,21 @@ if actual != expected:
 }
 
 @test "json.encode_bool" {
+  local buff input join
   run json.encode_bool
   [[ $status == 1 \
     && $output == *"in: in= must be set when no positional args are given" ]]
+
+  input=()
+  in=input run json.encode_bool
+  [[ $status == 0 && $output == '' ]]
 
   join=,
   [[ $(json.encode_bool true) == "true" ]]
   [[ $(json.encode_bool false) == "false" ]]
   [[ $(json.encode_bool false true) == "false,true" ]]
 
-  local input=(false true)
+  input=(false true)
   [[ $(in=input json.encode_bool) == "false,true" ]]
 
   run json.encode_bool foo bar
@@ -189,7 +199,7 @@ if actual != expected:
   run json.encode_bool true,true
   [[ $status == 1 ]]
 
-  local buff=()
+  buff=()
   out=buff join= json.encode_bool true
   out=buff join= json.encode_bool false true
   out=buff join=$'\n' json.encode_bool true false
@@ -198,15 +208,20 @@ if actual != expected:
 }
 
 @test "json.encode_null" {
+  local buff input join
   run json.encode_null
   [[ $status == 1 \
     && $output == *"in: in= must be set when no positional args are given" ]]
+
+  input=()
+  in=input run json.encode_null
+  [[ $status == 0 && $output == '' ]]
 
   join=,
   [[ $(json.encode_null null) == "null" ]]
   [[ $(json.encode_null null null) == "null,null" ]]
 
-  local input=(null null)
+  input=(null null)
   [[ $(in=input json.encode_null) == "null,null" ]]
 
   run json.encode_null foo bar
@@ -215,7 +230,7 @@ if actual != expected:
   run json.encode_null null,null
   [[ $status == 1 ]]
 
-  local buff=()
+  buff=()
   out=buff join= json.encode_null null
   out=buff join= json.encode_null null null
   out=buff join=$'\n' json.encode_auto null null
@@ -224,9 +239,14 @@ if actual != expected:
 }
 
 @test "json.encode_auto" {
+  local buff input join
   run json.encode_auto
   [[ $status == 1 \
     && $output == *"in: in= must be set when no positional args are given" ]]
+
+  input=()
+  in=input run json.encode_auto
+  [[ $status == 0 && $output == '' ]]
 
   join=,
   [[ $(json.encode_auto 42) == '42' ]]
@@ -239,10 +259,10 @@ if actual != expected:
   [[ $(json.encode_auto foo '"42' foo '"42') == '"foo","\"42","foo","\"42"' ]]
   [[ $(json.encode_auto foo ',"42' foo ',"42') == '"foo",",\"42","foo",",\"42"' ]]
 
-  local input=(foo ',"42' foo ',"42')
+  input=(foo ',"42' foo ',"42')
   [[ $(in=input json.encode_auto) == '"foo",",\"42","foo",",\"42"' ]]
 
-  local buff=()
+  buff=()
   out=buff join= json.encode_auto null
   out=buff join= json.encode_auto hi 42
   out=buff join=$'\n' json.encode_auto abc true
@@ -251,9 +271,14 @@ if actual != expected:
 }
 
 @test "json.encode_raw" {
+  local buff join input
   run json.encode_raw
   [[ $status == 1 \
     && $output == *"in: in= must be set when no positional args are given" ]]
+
+  input=()
+  in=input run json.encode_raw
+  [[ $status == 0 && $output == '' ]]
 
   join=,
   [[ $(json.encode_raw '{}') == '{}' ]]
@@ -261,7 +286,7 @@ if actual != expected:
   [[ $(json.encode_raw '}') == '}' ]]
   [[ $(json.encode_raw '[]' '{}') == '[],{}' ]]
 
-  local input=('[]' '{}')
+  input=('[]' '{}')
   [[ $(in=input json.encode_raw) == '[],{}' ]]
 
   run json.encode_raw ''
@@ -269,7 +294,7 @@ if actual != expected:
   [[ $status == 1 ]]
   [[ $output =~ "raw JSON value is empty" ]]
 
-  local buff=()
+  buff=()
   out=buff join= json.encode_raw 1
   out=buff join= json.encode_raw 2 3
   out=buff join=$'\n' json.encode_raw 4 5
