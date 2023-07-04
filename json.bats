@@ -354,7 +354,7 @@ if actual != expected:
 @test "json.encode_json :: rejects invalid JSON" {
   invalid_json=('{:}' ' ' '[' '{' '"foo' '[true false]')
 
-  for invalid in "${invalid_json[@]}"; do
+  for invalid in "${invalid_json[@]:?}"; do
     run json.encode_json ''
     [[ $status == 1 \
       && $output == *"json.encode_json(): not all inputs are valid JSON:"* ]]
@@ -459,6 +459,223 @@ function assert_input_encodes_to_output_under_all_calling_conventions() {
     join=''  assert_input_encodes_to_output_under_all_calling_conventions
     join=',' assert_input_encodes_to_output_under_all_calling_conventions
   done
+}
+
+@test "json.stream_encode_string" {
+  local json_chunk_size=2 buff=()
+  for json_chunk_size in '' 2; do
+    run json.stream_encode_string < <(printf 'foo')
+    [[ $status == 0 && $output == '"foo"' ]]
+
+    run json.stream_encode_string < <(printf 'foo bar\nbaz boz\nabc')
+    [[ $status == 0 && $output == '"foo bar\nbaz boz\nabc"' ]]
+  done
+
+  # out_cb names a function that's called for each encoded chunk
+  stdout_file=$(mktemp_bats)
+  json_chunk_size=2
+  out=buff out_cb=__json.stream_encode_cb json.stream_encode_string \
+    < <(printf 'abcdefg') > "${stdout_file:?}"
+
+  # out_cb is called incrementally. It's not called after the initial or ending
+  # " though.
+  [[ $(<"${stdout_file:?}") == $'CB: ab\nCB: cd\nCB: ef\nCB: g' ]]
+
+  [[ ${#buff[@]} == 6 && ${buff[0]} == '"' && ${buff[1]} == 'ab' \
+    && ${buff[2]} == 'cd' && ${buff[3]} == 'ef' && ${buff[4]} == 'g' \
+    && ${buff[5]} == '"'  ]]
+}
+
+function __json.stream_encode_cb() {
+  printf 'CB: %s\n' "${buff[-1]}"
+}
+
+@test "json.stream_encode_raw" {
+  local json_chunk_size=2 buff=()
+  for json_chunk_size in '' 2; do
+    # As with json.encode_raw, it fails if the input is empty
+    run json.stream_encode_raw < <(printf '')
+    [[ $status == 1 && $output == \
+      'json.stream_encode_raw(): raw JSON value is empty' ]]
+
+    run json.stream_encode_raw < <(printf '{"foo":true}')
+    echo "$status $output"
+    [[ $status == 0 && $output == '{"foo":true}' ]]
+
+    tmp=$(mktemp_bats)  # bats' run looses trailing newlines
+    json.stream_encode_raw < <(printf '{\n  "foo": true\n}\n') > "${tmp:?}"
+    printf '{\n  "foo": true\n}\n' | diff - "${tmp:?}"
+  done
+
+  # out_cb names a function that's called for each encoded chunk
+  stdout_file=$(mktemp_bats)
+  json_chunk_size=2
+  out=buff out_cb=__json.stream_encode_cb json.stream_encode_raw \
+    < <(printf '["abc"]') > "${stdout_file:?}"
+
+  [[ $(<"${stdout_file:?}") == $'CB: ["\nCB: ab\nCB: c"\nCB: ]' ]]
+
+  [[ ${#buff[@]} == 4 && ${buff[0]} == '["' && ${buff[1]} == 'ab' \
+    && ${buff[2]} == 'c"' && ${buff[3]} == ']' ]]
+}
+
+function get_value_encode_examples() {
+  example_names=(string number bool{1,2} true false null auto{1,2} raw json)
+  examples+=(
+    [string_in]=$'a b\nc d\n \n' [string_out]='"a b\nc d\n \n"' [string_cb]=2
+    [number_in]='-42.4e2'        [number_out]='-42.4e2'
+    [bool1_in]='true'            [bool1_out]='true'             [bool1_type]=bool
+    [bool2_in]='false'           [bool2_out]='false'            [bool2_type]=bool
+    [true_in]='true'             [true_out]='true'
+    [false_in]='false'           [false_out]='false'
+    [null_in]='null'             [null_out]='null'
+    [auto1_in]='hi'              [auto1_out]='"hi"'             [auto1_type]=auto
+    [auto2_in]='42'              [auto2_out]='42'               [auto2_type]=auto
+    [raw_in]='{"msg":"hi"}'      [raw_out]='{"msg":"hi"}'       [raw_cb]=2
+    [json_in]='{"msg":"hi"}'     [json_out]='{"msg":"hi"}'
+  )
+}
+
+@test "json.encode_value_from_file" {
+  local actual buff json_chunk_size=8 cb_count=0
+  local example_names; local -A examples; get_value_encode_examples
+
+  for name in "${example_names[@]:?}"; do
+    type=${examples[${name}_type]:-${name:?}}
+
+    # output to stdout
+    out='' type=${type:?} run json.encode_value_from_file \
+      < <(echo -n "${examples["${name:?}_in"]}" )
+    [[ $status == 0 && $output == "${examples[${name:?}_out]:?}" ]]
+
+    # output to array
+    buff=()
+    out=buff type=${type:?} json.encode_value_from_file \
+      < <(echo -n "${examples["${name:?}_in"]}" )
+    [[ $status == 0 && ${#buff[@]} == 1 \
+      && ${buff[0]} == "${examples[${name:?}_out]:?}" ]]
+  done
+}
+
+@test "json.encode_value_from_file :: stops reading after null byte" {
+  type=string run json.encode_value_from_file \
+      < <(printf "foo\x00"; timeout 3 yes )
+  [[ $status == 0 && $output == '"foo"' ]]
+}
+
+@test "json.encode_from_file :: single value" {
+  local actual buff json_chunk_size=8 cb_count
+  local tmp=$(mktemp_bats)
+  local example_names; local -A examples; get_value_encode_examples
+
+  for name in "${example_names[@]:?}"; do
+    type=${examples[${name}_type]:-${name:?}}
+
+    # output to stdout
+    cb_count=0
+    type=${type:?} out_cb=_increment_cb_count json.encode_from_file \
+      < <(echo -n "${examples["${name:?}_in"]}" ) > "${tmp:?}"
+    echo -n "${examples[${name:?}_out]:?}" | diff - "${tmp:?}"
+    [[ $cb_count == ${examples[${name:?}_cb]:-0} ]]
+
+    # output to array
+    buff=() cb_count=0
+    out=buff type=${type:?} out_cb=_increment_cb_count json.encode_from_file \
+      < <(echo -n "${examples["${name:?}_in"]}" )
+    printf -v actual '%s' "${buff[@]}"
+    [[ $actual == "${examples[${name:?}_out]:?}" ]]
+    [[ $cb_count == ${examples[${name:?}_cb]:-0} ]]
+  done
+}
+
+function _increment_cb_count() { let ++cb_count; }
+
+function get_array_encode_examples() {
+  example_names=(string number bool true false null auto raw json)
+  examples+=(
+    [string_in]=$'a b\nc d\n \n'     [string_out]=$'"a b","c d"," "'
+    [number_in]=$'1\n2\n3\n'         [number_out]=$'1,2,3'
+    [bool_in]=$'true\nfalse\n'       [bool_out]=$'true,false'
+    [true_in]=$'true\ntrue\n'        [true_out]=$'true,true'
+    [false_in]=$'false\nfalse\n'     [false_out]=$'false,false'
+    [null_in]=$'null\nnull\n'        [null_out]=$'null,null'
+    [auto_in]=$'hi\n42\ntrue\n'      [auto_out]=$'"hi",42,true'
+    [raw_in]=$'{"msg":"hi"}\n42\n'   [raw_out]=$'{"msg":"hi"},42'
+    [json_in]=$'{"msg":"hi"}\n42\n'  [json_out]=$'{"msg":"hi"},42'
+  )
+}
+
+@test "json.encode_from_file :: array" {
+  local json_buffered_chunk_count=2 cb_count
+  local tmp=$(mktemp_bats)
+  local example_names; local -A examples; get_array_encode_examples
+
+  for type in "${example_names[@]:?}"; do
+    # output to stdout
+    cb_count=0
+    array=true split=$'\n' out_cb=_increment_cb_count json.encode_from_file \
+      < <(echo -n "${examples["${type:?}_in"]}" ) > "${tmp:?}"
+    echo -n "[${examples[${type:?}_out]:?}]" | diff - "${tmp:?}"
+    echo "${cb_count@Q}"
+    [[ $cb_count == 1 ]]
+
+    # output to array
+    buff=() cb_count=0
+    out=buff array=true split=$'\n' out_cb=_increment_cb_count \
+      json.encode_from_file < <(echo -n "${examples["${type:?}_in"]}" )
+    printf -v actual '%s' "${buff[@]}"
+    [[ "${actual:?}" == "[${examples[${type:?}_out]:?}]" ]]
+    [[ $cb_count == 1 ]]
+  done
+}
+
+@test "json.stream_encode_array :: stops reading file on error" {
+  local json_buffered_chunk_count=2
+  # We stop reading the stream if an element is invalid
+  split=$'\n' type=number run json.stream_encode_array \
+    < <(seq 3; timeout 3 yes ) # stream a series of non-int values forever
+
+  [[ $status == 1 && $output == \
+    "[1,2,3,json.encode_number(): not all inputs are numbers: 'y' 'y'" ]]
+}
+
+@test "json.stream_encode_array" {
+  local buff json_buffered_chunk_count=2
+  local example_names; local -A examples; get_array_encode_examples
+  for type in "${example_names[@]:?}"; do
+    # Empty file
+    split=$'\n' type=${type:?} run json.stream_encode_array < <(echo -n '' )
+    [[ $status == 0 && $output == "[]" ]]
+
+    buff=() output=''
+    out=buff split=$'\n' type=${type:?} json.stream_encode_array < <(echo -n '' )
+    printf -v output '%s' "${buff[@]}"
+    [[ $status == 0 && $output == "[]" ]]
+
+    # Non-empty file
+    split=$'\n' type=${type:?} run json.stream_encode_array \
+      < <(echo -n "${examples["${type:?}_in"]}" )
+    [[ $status == 0 && $output == "[${examples[${type:?}_out]:?}]" ]]
+
+    buff=() output=''
+    out=buff split=$'\n' type=${type:?} json.stream_encode_array \
+      < <(echo -n "${examples["${type:?}_in"]}" )
+    printf -v output '%s' "${buff[@]}"
+    [[ $status == 0 && $output == "[${examples[${type:?}_out]:?}]" ]]
+  done
+
+  # out_cb names a function that's called for each encoded chunk
+  buff=()
+  stdout_file=$(mktemp_bats)
+  out=buff out_cb=__json.stream_encode_cb split=',' type=string \
+    json.stream_encode_array < <(printf 'a,b,c,d,e,f,g') > "${stdout_file:?}"
+
+  # out_cb is called incrementally. It's not called after the initial or ending
+  # [ ] though.
+  echo -n $'CB: "a"\nCB: "b","c"\nCB: "d","e"\n' | diff -u - "${stdout_file:?}"
+
+  local expected=('[' '"a"' ',' '"b","c"' ',' '"d","e"' ',' '"f","g"' ']')
+  assert_array_equals expected buff
 }
 
 @test "json argument pattern :: non-matches" {
@@ -1164,5 +1381,29 @@ function expect_json_array_invalid() {
     expect_json_array_invalid "${_initials[@]}" '{}{}'
     expect_json_array_invalid "${_initials[@]}" '{42:true}'
     expect_json_array_invalid "${_initials[@]}" '{"foo":}'
+  done
+}
+
+function assert_array_equals() {
+  local -n left=${1:?} right=${2:?}
+  declare -p left right
+  if [[ ${left@a} != *a* ]]; then
+    echo "assert_array_equals: left is not an array var" >&2; return 1
+  fi
+  if [[ ${right@a} != *a* ]]; then
+    echo "assert_array_equals: right is not an array var" >&2; return 1
+  fi
+
+  if [[ ${#left[@]} != ${#right[@]} ]]; then
+    echo "assert_array_equals: arrays have different lengths:" \
+      "${#left[@]} != ${#right[@]}" >&2; return 1;
+  fi
+
+  for i in "${!left[@]}"; do
+    if [[ ${left[$i]} != ${right[$i]} ]]; then
+      echo "assert_array_equals: arrays are unequal at index $i:" \
+        "${left[$i]@Q} != ${right[$i]@Q}" >&2
+      return 1
+    fi
   done
 }

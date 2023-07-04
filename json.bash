@@ -174,7 +174,7 @@ function json.encode_raw() {
   # Caller is responsible for ensuring values are valid JSON!
   if [[ $# == 0 ]]; then
     local -n _jer_in=${in:?"$_json_in_err"};
-    if [[ ${#_jer_in[@]} == 1 && ${_jer_in[0]} == '' ]]; then
+    if [[ ${#_jer_in[@]} == 1 && ${_jer_in[@]::1} == '' ]]; then
       echo "json.encode_raw(): raw JSON value is empty" >&2; return 1
     fi
   elif [[ $# == 1 && $1 == "" ]]; then
@@ -304,6 +304,111 @@ function json.validate() {
     fi
     return 1
   fi
+}
+
+# Encode a file as a single JSON value, or JSON array of values.
+#
+# This function will stream the file contents when encoding string and raw
+# types, and when encoding arrays of any time. (However, it buffers individual
+# array values, so the values themselves can't be larger than memory, but the
+# overall array can be.)
+function json.encode_from_file() {
+  case "${type:?}_${array:-}" in
+  # There's not much point in implementing json.stream_encode_json() because
+  # grep (which evaluates the validation regex) buffers the entire input in
+  # memory while matching, despite not needing to backtrack or output the match.
+  (@(string|number|bool|true|false|null|auto|raw|json)_true)
+    json.stream_encode_array || return $? ;;
+  (@(string|raw)_*)
+    "json.stream_encode_${type:?}" || return $? ;;
+  (@(number|bool|true|false|null|auto|json)_*)
+    json.encode_value_from_file || return $? ;;
+  (*)
+    echo "json.encode_from_file(): unsupported type: ${type@Q}" >&2; return 1 ;;
+  esac
+}
+
+# Encode the contents of a file as a JSON string, without buffering the whole
+# value.
+function json.stream_encode_string() {
+  local _jses_chunk _jses_encoded IFS='' eof=
+  json.buffer_output '"'
+  while [[ ! $eof ]]; do
+    _jses_encoded=()
+    read -r -d '' -N "${json_chunk_size:-8191}" _jses_chunk || eof=true
+    out=_jses_encoded json.encode_string "${_jses_chunk?}"
+    json.buffer_output "${_jses_encoded[0]:1:-1}" # strip the quotes
+    "${out_cb:-:}"
+  done
+  json.buffer_output '"'
+}
+
+# Encode the contents of a file as a raw JSON value, without buffering the whole
+# value.
+#
+# This behaves the same way as json.encode_raw — any JSON value can be emitted,
+# but the caller is responsible for ensuring the input is actually valid JSON,
+# as function does no validation of the content, other than failing if the whole
+# file is empty.
+function json.stream_encode_raw() {
+  local _jser_chunk eof=
+  read -r -d '' -N "${json_chunk_size:-8191}" _jser_chunk || eof=true
+  if [[ ! $_jser_chunk ]]; then
+    echo "json.stream_encode_raw(): raw JSON value is empty" >&2; return 1
+  fi
+  json.buffer_output "${_jser_chunk}"
+  "${out_cb:-:}"
+  while [[ ! $eof ]]; do
+    read -r -d '' -N "${json_chunk_size:-8191}" _jser_chunk || eof=true
+    json.buffer_output "${_jser_chunk}"
+    "${out_cb:-:}"
+  done
+}
+
+# Read a file (up to the first null byte, if any) and encode it as $type.
+#
+# This function buffers the entire value in memory.
+function json.encode_value_from_file() {
+  local _jevff_chunk
+  # close stdin after reading 1 chunk — we ignore anything after the first null
+  # byte.
+  readarray -d '' -C json._jevff_close_stdin -c 1 _jevff_chunk
+  "json.encode_${type:?}" "${_jevff_chunk[0]}"
+}
+function json._jevff_close_stdin() { exec 0<&-; }
+
+# Stream-encode chunks from a file as JSON array elements.
+#
+# This function splits the input file (stdin) into chunks using the single
+# character delimiter defined by $split. While encoding, it buffers individual
+# chunks in memory, but not the file as a whole (so long as the caller flushes
+# their $out buffer via the $out_cb callback.)
+function json.stream_encode_array() {
+  local _jsea_raw_chunks=() _jsea_encoded_chunks=() _jsea_caller_out=${out:-} \
+    _jsea_separator=() _jsea_error=
+  out=$_jsea_caller_out json.buffer_output '['
+  readarray -t -d "${split?}" -C json.__jsea_on_chunks_available \
+    -c "${json_buffered_chunk_count:-1024}" _jsea_raw_chunks
+  if [[ $_jsea_error ]]; then return 1; fi
+  out=$_jsea_caller_out in=_jsea_separator json.buffer_output
+  out=$_jsea_caller_out in=_jsea_raw_chunks join=, "json.encode_${type:?}" \
+    || return 1
+  out=$_jsea_caller_out json.buffer_output ']'
+}
+
+function json.__jsea_on_chunks_available() {
+  out=$_jsea_caller_out in=_jsea_separator json.buffer_output
+  if ! out=$_jsea_caller_out in=_jsea_raw_chunks join=, \
+         "json.encode_${type:?}"; then
+    # readarray ignores our exit status, but we can force it to stop by closing
+    # stdin, which it's reading.
+    exec 0<&-  # close stdin
+    _jsea_error=true
+    return
+  fi
+  _jsea_raw_chunks=()
+  : ${_jsea_separator:=,} # separate chunks with , after the first write
+  "${out_cb:-:}" # call the out_cb, if provided
 }
 
 # Parse a json argument expression into attributes in an associative array.
