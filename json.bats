@@ -150,6 +150,13 @@ if actual != expected:
   [[ $status == 1 \
     && $output == *"in: in= must be set when no positional args are given" ]]
 
+  run json.encode_number ''
+  [[ $status == 1 && $output == *"not all inputs are numbers: ''" ]]
+
+  input=('')
+  in=input run json.encode_number
+  [[ $status == 1 && $output == *"not all inputs are numbers: ''" ]]
+
   input=()
   in=input run json.encode_number
   [[ $status == 0 && $output == '' ]]
