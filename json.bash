@@ -214,6 +214,7 @@ $(printf " %s" "${_jej_in[@]@Q}")" >&2
 function json.start_json_validator() {
   if [[ ${_json_validator_pids[$$]:-} != "" ]]; then return 0; fi
 
+  local ws string number atom array object json validation_request
   # This is a PCRE regex that matches JSON. This is possible because we use
   # PCRE's recursive patterns to match JSON's nested constructs. And also
   # possessive repetition quantifiers to prevent expensive backtracking on match
