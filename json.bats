@@ -377,6 +377,90 @@ if actual != expected:
   (( ${tests:?} == 4 * 6 ))
 }
 
+# Verify that a json.encode_${type} function handles in & out parameters correctly
+function assert_input_encodes_to_output_under_all_calling_conventions() {
+  : "${input?}" "${output:?}" "${join?}"
+  local buff1=() buff2=() IFS
+  local stdout1=$(mktemp_bats); local stdout2=$(mktemp_bats)
+  # Note: join is passed implicitly/automatically
+
+  # There are 4 ways to call - {in array, in args} x {out stdout, out array}
+  out=''    in=''    "json.encode_${type:?}" "${input[@]}"   > "${stdout1:?}"
+  out=''    in=input "json.encode_${type:?}"                 > "${stdout2:?}"
+  out=buff1 in=''    "json.encode_${type:?}" "${input[@]}"
+  out=buff2 in=input "json.encode_${type:?}"
+
+
+  IFS=${join?}; joined_output=${output[*]}
+  echo -n "$joined_output" | diff -u - "${stdout1:?}"
+  echo -n "$joined_output" | diff -u - "${stdout2:?}"
+
+  # When a join character is set, the encode fn joins inputs and outputs 1 result
+  if [[ $join ]]; then
+    [[ ${#buff1[@]} == 1 ]]
+    [[ ${#buff2[@]} == 1 ]]
+    [[ ${buff1[0]} == "${joined_output:?}" ]]
+    [[ ${buff2[0]} == "${joined_output:?}" ]]
+  else
+    [[ ${#buff1[@]} == "${#output[@]}" ]]
+    [[ ${#buff2[@]} == "${#output[@]}" ]]
+    for i in "${!buff1[@]}"; do
+      [[ ${buff1[$i]} == "${output[$i]}" ]]
+      [[ ${buff2[$i]} == "${output[$i]}" ]]
+    done
+  fi
+}
+
+@test "json.encode_* in/out calling convention" {
+  # Verify that the encode functions correctly handle in and out parameters
+  local input=() buff=()
+  local -A examples=(
+    [string_in]=$'a b\nc d\n \n' [string_out]='"a b\nc d\n \n"'
+    [number_in]='-42.4e2'        [number_out]='-42.4e2'
+    [bool_in]='false'            [bool_out]='false'
+    [true_in]='true'             [true_out]='true'
+    [false_in]='false'           [false_out]='false'
+    [null_in]='null'             [null_out]='null'
+    [auto_in]='hi'               [auto_out]='"hi"'
+    [raw_in]='{"msg":"hi"}'      [raw_out]='{"msg":"hi"}'
+    [json_in]='{"msg":"hi"}'     [json_out]='{"msg":"hi"}'
+  )
+
+  # for type in auto; do
+  for type in string number bool true false null auto raw json; do
+    raw="${examples[${type:?}_in]:?}" enc="${examples[${type:?}_out]:?}"
+
+    if [[ $type != @(string|auto) ]]; then
+      run "json.encode_${type:?}" ''
+      [[ $status == 1 && $output =~ "json.encode_${type:?}(): ".+ ]]
+
+      out=buff run "json.encode_${type:?}" ''
+      [[ $status == 1 && $output =~ "json.encode_${type:?}(): ".+ ]]
+
+      input=('')
+      in=input run "json.encode_${type:?}"
+      [[ $status == 1 && $output =~ "json.encode_${type:?}(): ".+ ]]
+
+      in=input out=buff run "json.encode_${type:?}"
+      [[ $status == 1 && $output =~ "json.encode_${type:?}(): ".+ ]]
+    else
+      # Single empty
+      input=('') output=('""')
+      join=''  assert_input_encodes_to_output_under_all_calling_conventions
+      join=',' assert_input_encodes_to_output_under_all_calling_conventions
+    fi
+
+    # Multiple inputs
+    input=("${raw:?}" "${raw:?}") output=("${enc:?}" "${enc:?}")
+    join=''  assert_input_encodes_to_output_under_all_calling_conventions
+    join=',' assert_input_encodes_to_output_under_all_calling_conventions
+    # Multiple inputs
+    input=("${raw:?}" "${raw:?}") output=("${enc:?}" "${enc:?}")
+    join=''  assert_input_encodes_to_output_under_all_calling_conventions
+    join=',' assert_input_encodes_to_output_under_all_calling_conventions
+  done
+}
+
 @test "json argument pattern :: non-matches" {
   # A ref key can't be empty, otherwise it would clash with the @=value syntax.
   # Also, an empty ref is not useful in practice.

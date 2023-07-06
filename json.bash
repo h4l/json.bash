@@ -175,10 +175,10 @@ function json.encode_raw() {
   if [[ $# == 0 ]]; then
     local -n _jer_in=${in:?"$_json_in_err"};
     if [[ ${#_jer_in[@]} == 1 && ${_jer_in[0]} == '' ]]; then
-      echo "json.bash: raw JSON value is empty" >&2; return 1
+      echo "json.encode_raw(): raw JSON value is empty" >&2; return 1
     fi
   elif [[ $# == 1 && $1 == "" ]]; then
-    echo "json.bash: raw JSON value is empty" >&2; return 1
+    echo "json.encode_raw(): raw JSON value is empty" >&2; return 1
   fi
 
   case $#:${join:-}:${in:-} in
