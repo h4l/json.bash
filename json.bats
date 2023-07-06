@@ -1134,6 +1134,9 @@ expected: $expected
     | equals_json '{db_password: "secret123"}'
   # (This pattern is commonly used to pass secrets securely via environment
   # variables.)
+
+  # Property names can come from files
+  json @<(printf prop_name)=value | equals_json '{prop_name: "value"}'
 }
 
 @test "json.bash json errors :: do not produce partial JSON output" {

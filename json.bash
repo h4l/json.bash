@@ -630,37 +630,43 @@ function json() {
     fi
 
     if [[ $_json_return == object ]]; then
-      if [[ ${_key_file:-} ]]; then
-        if ! readarray -t -d '' _key < "${_key_file:?}"; then
-          echo "json(): failed to read file referenced by argument:" \
-            "${_key_file@Q} from ${arg@Q}" >&2; return 2
-        fi
-      fi
-      json.encode_string "$_key" || return 1
+      if [[ ${_key_file:-} ]]
+      then json.stream_encode_string < "${_key_file:?}" || {
+        echo "json(): failed to read file referenced by argument:" \
+          "${_key_file@Q} from ${arg@Q}" >&2; return 2; }
+      else json.encode_string "$_key" || return 1 ; fi
       json.buffer_output ":"
     fi
+    local _status=0
     _encode_fn="json.encode_${_type:?}"
     if [[ ${_value_file:-} ]]; then
       if [[ ${_attrs[split]+isset} ]]; then _split=${_attrs[split]}
       elif [[ ${_attrs[array]:-} == true ]]; then _split=$'\n';
       else _split=''; fi
 
-      if ! readarray -t -d "${_split}" _value < "${_value_file:?}"; then
+      if ! { array=${_array:?} type=${_type:?} split=${_split?} \
+              json.encode_from_file || _status=$?; } < "${_value_file:?}"; then
         echo "json(): failed to read file referenced by argument:" \
           "${_value_file@Q} from ${arg@Q}" >&2; return 2
       fi
+      if [[ $_status != 0 ]]; then
+        echo "json(): failed to encode file contents as ${_type:?}: ${_value_file@Q} from ${arg@Q}" >&2
+        return 1
+      fi
+    else
+      if [[ $_array == true ]]; then
+        json.buffer_output "["
+        if [[ ${_value@a} != *a* ]]; then # if the value isn't an array, split it
+          IFS=${_attrs[split]:-}; _value_array=(${_value})
+          join=, in=_value_array "$_encode_fn" || _status=$?;
+        else join=, in=_value "$_encode_fn" || _status=$?; fi
+        json.buffer_output "]"
+      else "$_encode_fn" "${_value}" || _status=$?; fi
+      if [[ $_status != 0 ]]; then
+        echo "json(): failed to encode value as ${_type:?}: ${_value[@]@Q} from ${arg@Q}" >&2
+        return 1
+      fi
     fi
-    local _status=0
-    if [[ $_array == true ]]; then
-      json.buffer_output "["
-      if [[ ${_value@a} != *a* ]]; then # if the value isn't an array, split it
-        IFS=${_attrs[split]:-}; _value_array=(${_value})
-        join=, in=_value_array "$_encode_fn" || _status=$?;
-      else join=, in=_value "$_encode_fn" || _status=$?; fi
-      json.buffer_output "]"
-    else "$_encode_fn" "${_value}" || _status=$?; fi
-    [[ $_status == 0 ]] \
-      || { echo "json(): failed to encode value as ${_type:?}: ${_value[@]@Q} from ${arg@Q}" >&2; return 1; }
   done
 
   if [[ $_json_return == object ]]; then json.buffer_output '}'
