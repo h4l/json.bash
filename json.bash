@@ -385,18 +385,27 @@ function json._jevff_close_stdin() { exec 0<&-; }
 # their $out buffer via the $out_cb callback.)
 function json.stream_encode_array() {
   local _jsea_raw_chunks=() _jsea_encoded_chunks=() _jsea_caller_out=${out:-} \
-    _jsea_separator=() _jsea_error=
+    _jsea_last_emit= _jsea_separator=() _jsea_error=
   out=$_jsea_caller_out json.buffer_output '['
   readarray -t -d "${split?}" -C json.__jsea_on_chunks_available \
     -c "${json_buffered_chunk_count:-1024}" _jsea_raw_chunks
   if [[ $_jsea_error ]]; then return 1; fi
-  out=$_jsea_caller_out in=_jsea_separator json.buffer_output
-  out=$_jsea_caller_out in=_jsea_raw_chunks join=, "json.encode_${type:?}" \
-    || return 1
+  unset "_jsea_raw_chunks[$_jsea_last_emit]"
+  if [[ ${#_jsea_raw_chunks[@]} != 0 ]]; then
+    out=$_jsea_caller_out in=_jsea_separator json.buffer_output
+    out=$_jsea_caller_out in=_jsea_raw_chunks join=, "json.encode_${type:?}" \
+      || return 1
+  fi
   out=$_jsea_caller_out json.buffer_output ']'
 }
 
 function json.__jsea_on_chunks_available() {
+  # To emit new elements as fast as possible, we add the just-read element in $2
+  # at index $1 before emitting. Bash does this insert itself after we return (
+  # which delays that element until the next set of chunks is ready). This means
+  # that we must also remove the first array element to avoid emitting it twice.
+  unset "_jsea_raw_chunks[$_jsea_last_emit]"
+  _jsea_raw_chunks["${1:?}"]=$2 _jsea_last_emit=$1
   out=$_jsea_caller_out in=_jsea_separator json.buffer_output
   if ! out=$_jsea_caller_out in=_jsea_raw_chunks join=, \
          "json.encode_${type:?}"; then

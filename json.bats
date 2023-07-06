@@ -636,7 +636,21 @@ function get_array_encode_examples() {
     < <(seq 3; timeout 3 yes ) # stream a series of non-int values forever
 
   [[ $status == 1 && $output == \
-    "[1,2,3,json.encode_number(): not all inputs are numbers: 'y' 'y'" ]]
+    "[1,2,json.encode_number(): not all inputs are numbers: '3' 'y'" ]]
+}
+
+@test "json.stream_encode_array :: json_buffered_chunk_count=1 callback" {
+  # json_buffered_chunk_count=1 results in readarray invoking the chunks
+  # available callback with an empty array, which is a bit of an edge case.
+  json_buffered_chunk_count=1 split=$'\n' type=string \
+    run json.stream_encode_array < <(printf '' )
+  [[ $status == 0 && $output == '[]' ]]
+  json_buffered_chunk_count=1 split=$'\n' type=string \
+    run json.stream_encode_array < <(printf 'foo\n' )
+  [[ $status == 0 && $output == '["foo"]' ]]
+  json_buffered_chunk_count=1 split=$'\n' type=string \
+    run json.stream_encode_array < <(printf 'foo\nbar\n' )
+  [[ $status == 0 && $output == '["foo","bar"]' ]]
 }
 
 @test "json.stream_encode_array" {
@@ -672,9 +686,9 @@ function get_array_encode_examples() {
 
   # out_cb is called incrementally. It's not called after the initial or ending
   # [ ] though.
-  echo -n $'CB: "a"\nCB: "b","c"\nCB: "d","e"\n' | diff -u - "${stdout_file:?}"
+  echo -n $'CB: "a","b"\nCB: "c","d"\nCB: "e","f"\n' | diff -u - "${stdout_file:?}"
 
-  local expected=('[' '"a"' ',' '"b","c"' ',' '"d","e"' ',' '"f","g"' ']')
+  local expected=('[' '"a","b"' ',' '"c","d"' ',' '"e","f"' ',' '"g"' ']')
   assert_array_equals expected buff
 }
 
