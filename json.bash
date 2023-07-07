@@ -740,5 +740,8 @@ EOT
   esac
   fn=json
   if [[ $0 =~ [^[:alpha:]](array|object)$ ]]; then fn=json.${BASH_REMATCH[1]}; fi
-  out='' "${fn:?}" "$@" || exit $?
+  out='' json_buffered_chunk_count=${JSON_BASH_BUFFERED_ARRAY_ELEMENT_COUNT:-} \
+    json_chunk_size=${JSON_BASH_BUFFERED_BYTES_COUNT:-} \
+    json_stream=${JSON_BASH_STREAM:-} \
+    "${fn:?}" "$@" || exit $?
 fi
