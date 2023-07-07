@@ -544,7 +544,9 @@ function json() {
         "${json_defaults@Q}" >&2; return 1
     fi
   fi
-  local _caller_out=${out:-} out=_json_buff _json_buff=()
+  local _caller_out=${out:-}
+  if [[ ${json_stream:-} != true ]]
+  then local out=_json_buff _json_buff=(); fi
 
   local _json_return=${json_return:-object}
   [[ $_json_return == object || $_json_return == array ]] || {
@@ -681,8 +683,10 @@ function json() {
   if [[ $_json_return == object ]]; then json.buffer_output '}'
   else json.buffer_output ']'; fi
   if [[ ${_caller_out?} == '' ]]; then json.buffer_output $'\n'; fi
-  # Emit only complete JSON values, not pieces
-  local IFS=''; out=${_caller_out?} json.buffer_output "${_json_buff[*]}"
+  if [[ ${json_stream:-} != true ]]; then
+    # By default we emit only complete JSON values, not pieces
+    local IFS=''; out=${_caller_out?} json.buffer_output "${_json_buff[*]}"
+  fi
 }
 
 function json.object() {

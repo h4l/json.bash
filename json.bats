@@ -1259,6 +1259,87 @@ expected: $expected
   [[ $(json a:raw=']  ') == '{"a":]  }' ]]
 }
 
+@test "json streaming output with json_stream=true :: arrays" {
+  # By default json collects output in a buffer and only emits it in one go.
+  # This behaviour is intended to prevent partial output in the case of errors.
+  # But incremental output can be desirable when stream-encoding from a pipe or
+  # large file.
+  in_pipe=$(mktemp_bats --dry-run); out_pipe=$(mktemp_bats --dry-run)
+  mkfifo "${in_pipe:?}" "${out_pipe:?}"
+
+  json_buffered_chunk_count=1 json_stream=true \
+    json before="I am first!" content:json[]@=${in_pipe:?} after="I am last!" \
+    > "${out_pipe:?}" &
+
+  exec 7<"${out_pipe:?}"  # open the in/out pipes
+  exec 6>"${in_pipe:?}"
+
+  expect_read 7 '{"before":"I am first!","content":['
+  json msg="Knock knock!" >&6
+  expect_read 7 '{"msg":"Knock knock!"}'
+  json msg="Who is there?" >&6
+  expect_read 7 ',{"msg":"Who is there?"}'
+  exec 6>&-  # close the input
+  expect_read 7 $'],"after":"I am last!"}\n'
+  exec 7>&-  # close the output
+  wait %1
+}
+
+@test "json streaming output with json_stream=true :: string/raw" {
+  # As well as arrays, the string and raw types support streamed output from
+  # files. The result of this is that string and raw values are written out
+  # incrementally, without buffering the whole value in memory. This test
+  # demonstrates this by writing string and raw values across several separate
+  # writes, while reading the partial output as it's emitted.
+  in_key=$(mktemp_bats --dry-run) in_string=$(mktemp_bats --dry-run);
+  in_raw=$(mktemp_bats --dry-run); out_pipe=$(mktemp_bats --dry-run);
+  mkfifo "${in_key:?}" "${in_string:?}" "${in_raw:?}" "${out_pipe:?}"
+
+  json_chunk_size=12 json_stream=true json \
+    streamed_string@="${in_string:?}" \
+    @"${in_key:?}=My property name is streamed" \
+    streamed_raw:raw@="${in_raw:?}" \
+    > "${out_pipe:?}" &
+
+  exec 7<"${out_pipe:?}"  # open the output that json is writing to
+
+  # Generate the string value of the first property
+  exec 6>"${in_string:?}"  # open the pipe that json is reading the string from
+  expect_read 7 '{"streamed_string":"'
+  printf 'This is the ' >&6
+  expect_read 7 'This is the '
+  printf 'content of t' >&6
+  expect_read 7 'content of t'
+  printf 'he string.\n\n' >&6
+  expect_read 7 'he string.\n\n'
+  exec 6>&-  # close in_string
+
+  # Generate the property name of the second property
+  exec 6>"${in_key:?}"
+  printf 'This is the property name' >&6
+  expect_read 7 '","This is the property nam'
+  printf '. It could be quite long, but probably best not to do that.' >&6
+  expect_read 7 'e. It could be quite long, but probably best not'
+  exec 6>&-  # close in_key
+
+  expect_read 7 ' to do that.":"My property name is streamed","streamed_raw":'
+
+  # Generate the raw value of the third property
+  exec 6>"${in_raw:?}"
+  printf '[' >&6
+  json msg="I'm in ur script" >&6
+  expect_read 7 '[{"msg":"I'\''m in ur scrip'
+  printf ',' >&6
+  json msg="generating JSON" >&6
+  printf ']' >&6
+  expect_read 7 $'t"}\n,{"msg":"generating '
+  exec 6>&-  # close in_raw
+  expect_read 7 $'JSON"}\n]}\n'
+
+  exec 7>&-  # close the output
+  wait %1
+}
+
 @test "json.bash CLI :: help" {
   for flag in -h --help; do
     run ./json.bash "$flag"
@@ -1423,4 +1504,21 @@ function assert_array_equals() {
       return 1
     fi
   done
+}
+
+function expect_read() {
+  local fd=${1:?} expected=${2:?} status=0
+  read -r -t 1 -N "${#expected}" -u "${fd:?}" actual || status=$?
+  if (( $status > 128 )); then
+    echo "expect_read: read FD ${fd:?} timed out" >&2
+    return 1
+  elif (( $status > 0 )); then
+    echo "expect_read: read returned status=$status" >&2
+  fi
+
+  if [[ $expected != "$actual" ]]; then
+    echo "expect_read: read result did not match expected:" \
+      "expected=${expected@Q}, actual=${actual@Q}" >&2
+    return 1
+  fi
 }
