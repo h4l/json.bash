@@ -502,9 +502,9 @@ function __json.stream_encode_cb() {
     echo "$status $output"
     [[ $status == 0 && $output == '{"foo":true}' ]]
 
-    tmp=$(mktemp_bats)  # bats' run looses trailing newlines
-    json.stream_encode_raw < <(printf '{\n  "foo": true\n}\n') > "${tmp:?}"
-    printf '{\n  "foo": true\n}\n' | diff - "${tmp:?}"
+    # Trailing newlines are not striped from file contents
+    diff <(json.stream_encode_raw < <(printf '{\n  "foo": true\n}\n')) \
+         <(printf '{\n  "foo": true\n}\n')
   done
 
   # out_cb names a function that's called for each encoded chunk
@@ -520,9 +520,15 @@ function __json.stream_encode_cb() {
 }
 
 function get_value_encode_examples() {
-  example_names=(string number bool{1,2} true false null auto{1,2} raw json)
+  example_names=(string_notrim string_trim number bool{1,2} true false null auto{1,2} raw json)
   examples+=(
-    [string_in]=$'a b\nc d\n \n' [string_out]='"a b\nc d\n \n"' [string_cb]=2
+    # json.stream_encode_string preserves trailing whitespace/newlines
+    [string_notrim_in]=$'a b\nc d\n \n' [string_notrim_out]='"a b\nc d\n \n"' [string_notrim_type]=string [string_notrim_cb]=2
+    # json.encode_value_from_file trims trailing whitespace. However it's not
+    # currently called via json(), because json.encode_from_file always uses
+    # json.stream_encode_string.
+    [string_trim_in]=$'a b\nc d\n \n'   [string_trim_out]='"a b\nc d"'        [string_trim_type]=string
+
     [number_in]='-42.4e2'        [number_out]='-42.4e2'
     [bool1_in]='true'            [bool1_out]='true'             [bool1_type]=bool
     [bool2_in]='false'           [bool2_out]='false'            [bool2_type]=bool
@@ -543,6 +549,10 @@ function get_value_encode_examples() {
   for name in "${example_names[@]:?}"; do
     type=${examples[${name}_type]:-${name:?}}
 
+    # json.encode_value_from_file trims whitespace from the file contents before
+    # encoding.
+    if [[ $name == string_notrim ]]; then continue; fi
+
     # output to stdout
     out='' type=${type:?} run json.encode_value_from_file \
       < <(echo -n "${examples["${name:?}_in"]}" )
@@ -552,6 +562,10 @@ function get_value_encode_examples() {
     buff=()
     out=buff type=${type:?} json.encode_value_from_file \
       < <(echo -n "${examples["${name:?}_in"]}" )
+
+    printf "expected:\n%s\n" "${examples[${name:?}_out]:?}"
+    printf "actual:\n%s\n" "${buff[0]}"
+
     [[ $status == 0 && ${#buff[@]} == 1 \
       && ${buff[0]} == "${examples[${name:?}_out]:?}" ]]
   done
@@ -570,6 +584,11 @@ function get_value_encode_examples() {
 
   for name in "${example_names[@]:?}"; do
     type=${examples[${name}_type]:-${name:?}}
+
+    # When encoding strings, json.encode_from_file always uses
+    # json.stream_encode_string, never json.encode_value_from_file, so it
+    # preserves trailing whitespace.
+    if [[ $name == string_trim ]]; then continue; fi
 
     # output to stdout
     cb_count=0
@@ -690,6 +709,61 @@ function get_array_encode_examples() {
 
   local expected=('[' '"a","b"' ',' '"c","d"' ',' '"e","f"' ',' '"g"' ']')
   assert_array_equals expected buff
+}
+
+@test "json file input trailing newline handling" {
+  local chunk lines expected
+  # We mirror common shell behaviour of trimming newlines on input and creating
+  # them on output.
+  # e.g. command substitution trims newlines
+  [[ $'foo\nbar' == "$(printf 'foo\nbar\n')" ]]
+  # As does read (unless -N is used)
+  read -r -d '' chunk < <(printf 'foo\nbar\n') || true
+  [[ $'foo\nbar' == "$chunk" ]]
+  # readarray preserves by default, but trims if -t is specified
+  readarray -t chunk < <(printf 'foo\nbar\n')
+  expected=(foo bar)
+  assert_array_equals expected chunk
+  # And word splitting
+  lines=$'foo\nbar\n'
+  chunk=($lines)
+  assert_array_equals expected chunk
+
+  # We trim whitespace when reading all types, except string and raw values.
+  # e.g. json output is terminated by a newline
+  diff <(json) <(printf '{}\n')
+  # But the newline is trimed when inserting one json call into another:
+  diff <(json a:json@=<(json)) <(printf '{"a":{}}\n')
+  # Notice that the shell's own command substitution does the same thing
+  diff <(json a:json="$(json)") <(printf '{"a":{}}\n')
+  # This behaviour means numbers parse from files without needing to explicitly
+  # support trailing whitespace json.encode_number:
+  diff <(json a:number="$(echo 1)" b:number@=<(echo 2)) <(printf '{"a":1,"b":2}\n')
+  # And similarly, arrays of numbers are trimmed of whitespace with the default
+  # newline delimiter
+  diff <(json a:number[]="$(seq 2)" b:number[]@=<(seq 2)) <(printf '{"a":[1,2],"b":[1,2]}\n')
+
+  # The first exception is string values, which preserve trailing newlines. This
+  # is the default behaviour because a string exactly represents a text file's
+  # contents, and newlines are significant content. If we trimmed them then
+  # users would have no easy way to put them back. But users are able to trim
+  # them themselves if they don't want them.
+  diff <(json nl@=<(printf 'foo\n')) <(printf '{"nl":"foo\\n"}\n')
+  diff <(json no_nl@=<(echo -n 'foo')) <(printf '{"no_nl":"foo"}\n')
+
+  # The second execption is raw values. The raw type serves as an escape hatch,
+  # passing JSON as-is, without validation, so it seems natural to not modify
+  # their data by trimming newlines.
+  diff <(json formatted:raw@=<(printf '\n{\n  "msg": "hi"\n}\n')) \
+       <(printf '{"formatted":\n{\n  "msg": "hi"\n}\n}\n')
+  # Note that, when creating raw arrays with the (default) newline delmiter, the
+  # delimiter is removed from the each value. This is the same as for arrays of
+  # all types — the delimiter is not considered to be part of the value.
+  diff <(json formatted:raw[]@=<(printf '{}\n[]\n"hi"\n')) \
+       <(printf '{"formatted":[{},[],"hi"]}\n')
+  # Users can exercise precise control using null-terminated entries:
+  diff <(json formatted:raw[split=]@=<(printf '{\n}\n\n\x00[\n]\n\n\x00"hi"\n\n\x00')) \
+       <(printf '{"formatted":[{\n}\n\n,[\n]\n\n,"hi"\n\n]}\n')
 }
 
 @test "json argument pattern :: non-matches" {
@@ -1028,13 +1102,15 @@ expected: $expected
   json names[:]="Alice:Bob:Dr Chris" \
     | equals_json '{names: ["Alice", "Bob", "Dr Chris"]}'
 
-  # Inline values are not split unless a character is provided
-  json sizes[]="$(seq 3)" | equals_json '{sizes: ["1\n2\n3"]}'
-  json sizes:number[$'\n']="$(seq 3)" | equals_json '{sizes: [1, 2, 3]}'
+  # The default split character is line feed (\n), so each line is an array
+  # element. This integrates with line-oriented command-line tools:
+  json sizes[]="$(seq 3)" | equals_json '{sizes: ["1","2","3"]}'
+  json sizes:number[]="$(seq 3)" | equals_json '{sizes: [1, 2, 3]}'
 
-  # But file references use each line as a value by default
-  # (Note that <(seq 3) is a shell construct (process substitution) that
-  # produces a file containing 1 2 3 on separate lines.)
+  # The same applies when reading arrays from files
+  # (Note that <(seq 3) is a shell construct (process substitution) that prints
+  # the path to a file containing the output of the `seq 3` command (1 2 3 on
+  # separate lines.)
   json sizes:number[]@=<(seq 3) | equals_json '{sizes: [1, 2, 3]}'
 
   # [:] is shorthand for [split=:]

@@ -371,9 +371,9 @@ function json.stream_encode_raw() {
 function json.encode_value_from_file() {
   local _jevff_chunk
   # close stdin after reading 1 chunk — we ignore anything after the first null
-  # byte.
-  readarray -d '' -C json._jevff_close_stdin -c 1 _jevff_chunk
-  "json.encode_${type:?}" "${_jevff_chunk[0]}"
+  # byte. Note: read without -N trims trailing newlines, which we want.
+  read -r -d '' _jevff_chunk || true
+  "json.encode_${type:?}" "${_jevff_chunk}"
 }
 function json._jevff_close_stdin() { exec 0<&-; }
 
@@ -668,7 +668,11 @@ function json() {
       if [[ $_array == true ]]; then
         json.buffer_output "["
         if [[ ${_value@a} != *a* ]]; then # if the value isn't an array, split it
-          IFS=${_attrs[split]:-}; _value_array=(${_value})
+          if [[ ${_attrs[split]+isset} ]]; then _split=${_attrs[split]}
+          elif [[ ${_attrs[array]:-} == true ]]; then _split=$'\n';
+          else _split=''; fi
+
+          IFS=${_split}; _value_array=(${_value})
           join=, in=_value_array "$_encode_fn" || _status=$?;
         else join=, in=_value "$_encode_fn" || _status=$?; fi
         json.buffer_output "]"
