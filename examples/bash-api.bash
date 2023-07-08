@@ -36,9 +36,9 @@ printf "\njson.bash Bash API:\n"
 out=menuitem json value=New onclick="CreateNewDoc()"
 out=menuitem json value=Open onclick="OpenDoc()"
 out=menuitem json value=Close onclick="CloseDoc()"
-out=popup json @menuitem:raw[]
-out=menu json id=file value=File @popup:raw
-json @menu:raw
+out=popup json @menuitem:json[]
+out=menu json id=file value=File @popup:json
+json @menu:json
 
 printf '\n\n'
 cat <<EOT
@@ -69,7 +69,7 @@ IDs=(116 943 234 38793)
 out=Thumbnail json url="http://www.example.com/image/481989943" \
   height:number=125 width:number=100
 out=Image json Width:number=800 Height:number=600 Title="View from 15th Floor" \
-  @Thumbnail:raw Animated:false @IDs:number[]
-json @Image:raw
+  @Thumbnail:json Animated:false @IDs:number[]
+json @Image:json
 
 printf '\n'

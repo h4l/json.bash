@@ -41,7 +41,7 @@ tags=("${tags[@]:-"${default_tags[@]:?}"}")
 out=actions json action=view label="json.bash repo stats" \
   url='https://github.com/h4l/json.bash/pulse'
 out=notification json @topic @title @message @tags:string[] @priority:number \
-  click='https://github.com/h4l/json.bash' @actions:raw[]
+  click='https://github.com/h4l/json.bash' @actions:json[]
 
 echo -e "\nHere's your notification JSON:"
 echo "${notification:?}"
