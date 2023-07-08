@@ -5,6 +5,7 @@ JSON_BASH_VERSION=0.1.0
 
 # Generated in hack/argument_pattern.bash
 _json_bash_arg_pattern=$'^((@(::|==|@@|\\[\\[|[^:=[@]))?((::|==|@@|\\[\\[)|[^:=[@])*)?(:(auto|bool|false|json|null|number|raw|string|true))?(\\[((\\]\\]|,,|==)|[^]])*\\])?(@?=|$)'
+_json_bash_simple_arg_pattern=$'^((@[^:=[@]+)|([^:=[@]+))?(:(auto|bool|false|json|null|number|raw|string|true))?((\\[([^]:=[@,])?\\]))?(@=\\.?/?|=|$)'
 _json_bash_number_pattern='-?(0|[1-9][0-9]*)(\.[0-9]*)?([eE][+-]?[0-9]+)?'
 _json_bash_auto_pattern="\"(null|true|false|${_json_bash_number_pattern:?})\""
 _json_bash_number_glob='?([-])@(0|[1-9]*([0-9]))?([.]+([0-9]))?([eE]?([+-])+([0-9]))'
@@ -562,8 +563,24 @@ function json() {
     if [[ $arg == '--' && ${_dashdash_seen:-} != true ]]
     then _dashdash_seen=true; continue; fi
     local -A _attrs=()
-    if ! out=_attrs json.parse_argument "$arg"; then
-      echo "json(): argument is not structured correctly: '$arg'" >&2; return 1;
+    # Optimisation: Most patterns don't use escapes or named attributes, so use
+    # a cut-down, faster parsing strategy for common/simple patterns
+    if [[ $arg =~ $_json_bash_simple_arg_pattern ]]; then
+      case "${BASH_REMATCH[1]}:${BASH_REMATCH[5]}[${BASH_REMATCH[6]}]${BASH_REMATCH[9]}" in
+      (@*)          _attrs[key]=${BASH_REMATCH[1]:1} _attrs[@key]=var ;;&
+      ('@'@(./|/)*) _attrs[@key]=file ;;&
+      ([^@]*:*)     _attrs[key]=${BASH_REMATCH[1]} _attrs[@key]=str ;;&
+      (*:?*'['*)    _attrs[type]=${BASH_REMATCH[5]} ;;&
+      (*'[[]]'*)    _attrs[array]=true ;;&
+      (*'[['?']']*) _attrs[array]=true _attrs[split]=${BASH_REMATCH[8]} ;;&
+      (*=)          _attrs[val]=${arg:${#BASH_REMATCH[0]}} _attrs[@val]=str ;;&
+      (*@=@(./|/))  _attrs[val]="${BASH_REMATCH[9]:2}${arg:${#BASH_REMATCH[0]}}" _attrs[@val]=file ;;
+      (*@=)         _attrs[@val]=var ;;&
+      esac
+    else
+      if ! out=_attrs json.parse_argument "$arg"; then
+        echo "json(): argument is not structured correctly: '$arg'" >&2; return 1;
+      fi
     fi
     unset -n {_key,_value}{,_file}; unset {_key,_value}{,_file};
 

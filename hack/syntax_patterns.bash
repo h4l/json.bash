@@ -69,6 +69,23 @@ argument="
   ^ ( ${key:?} )? ( ${type:?} )? ( ${attributes:?} )? ( ${value:?} | $ )
 "
 
+# A reduced and more-common subset of the argument syntax that we can parse
+# more efficiently. No escapes, no named attributes.
+function simple_argument() {
+  local key=$'
+    ( @ [^:=[@]+ ) | ( [^:=[@]+ )
+  '
+  local type=' : ( auto | bool | false | json | null | number | raw | string | true ) '
+  local attributes=$'
+    ( \[ ([^]:=[@,])? \] )
+  '
+  local value=' @=\.?/? | = '
+
+  echo "
+    ^ ( ${key:?} )? ( ${type:?} )? ( ${attributes:?} )? ( ${value:?} | $ )
+  "
+}
+
 function bash_quote() {
   local quoted
   # Force bash to use $'...' syntax by including a non-printable character.
@@ -90,3 +107,4 @@ function format_regex_var() {
 # insert this output, it doesn't change often.)
 format_regex_var __attributes "${attributes:?}"
 format_regex_var _json_bash_arg_pattern "${argument:?}"
+format_regex_var _json_bash_simple_arg_pattern "$(simple_argument)"
