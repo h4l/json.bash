@@ -1284,6 +1284,14 @@ expected: $expected
     }
   done
 
+  # Invalid type in json_defaults is an error
+  json_defaults=type=cheese run json
+  [[ $status == 2 && $output =~ "json_defaults contains invalid 'type': 'cheese'" ]]
+  declare -g -A json_defaults=([type]=peas)
+  run json
+  [[ $status == 2 && $output =~ "json_defaults contains invalid 'type': 'peas'" ]]
+  unset json_defaults
+
   # Empty raw values are errors
   run json a:raw=
   [[ $status == 1 && $output =~ "raw JSON value is empty" ]]

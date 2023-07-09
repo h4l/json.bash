@@ -6,6 +6,7 @@ JSON_BASH_VERSION=0.1.0
 # Generated in hack/argument_pattern.bash
 _json_bash_arg_pattern=$'^((@(::|==|@@|\\[\\[|[^:=[@]))?((::|==|@@|\\[\\[)|[^:=[@])*)?(:(auto|bool|false|json|null|number|raw|string|true))?(\\[((\\]\\]|,,|==)|[^]])*\\])?(@?=|$)'
 _json_bash_simple_arg_pattern=$'^((@[^:=[@]+)|([^:=[@]+))?(:(auto|bool|false|json|null|number|raw|string|true))?((\\[([^]:=[@,])?\\]))?(@=\\.?/?|=|$)'
+_json_bash_type_name_pattern=$'^(auto|bool|false|json|null|number|raw|string|true)$'
 _json_bash_number_pattern='-?(0|[1-9][0-9]*)(\.[0-9]*)?([eE][+-]?[0-9]+)?'
 _json_bash_auto_pattern="\"(null|true|false|${_json_bash_number_pattern:?})\""
 _json_bash_number_glob='?([-])@(0|[1-9]*([0-9]))?([.]+([0-9]))?([eE]?([+-])+([0-9]))'
@@ -572,18 +573,25 @@ function json() {
   # vars referenced by arguments cannot start with _, so we prefix our own vars
   # with _ to prevent args referencing locals.
   local IFS _array _dashdash_seen _encode_fn _key _type _value _value_array _match _split
-  local -A _defaults=()
-  if [[ ${json_defaults+isset} ]]; then
-    if [[ ${json_defaults@a} == *A* ]]; then local -n _defaults=json_defaults
-    elif [[ ${json_defaults:-} ]] && ! out=_defaults __jpa_array_default='false' \
-           json.parse_argument "[${json_defaults}]"; then
-      json._error "json(): json_defaults is not structured correctly:" \
-        "${json_defaults@Q}"; return 2
-    fi
-  fi
+
   local _caller_out=${out:-}
   if [[ ${json_stream:-} != true ]]
   then local out=_json_buff _json_buff=(); fi
+
+  local -A _defaults
+  if [[ -v json_defaults || -v json_defaults[@] ]]; then
+    if [[ ${json_defaults@a} == *A* ]]; then
+      unset _defaults; local -n _defaults=json_defaults
+    elif [[ ${json_defaults:-} ]]; then
+      # Can't fail to parse because we escape ] as ]]
+      out=_defaults __jpa_array_default='false' json.parse_argument \
+        "[${json_defaults//']'/']]'}]"
+    fi
+    if [[ ! ${_defaults[type]:-string} =~ $_json_bash_type_name_pattern ]]; then
+      json._error "json(): json_defaults contains invalid 'type':" \
+        "${_defaults[type]@Q}"; return 2
+    fi
+  fi
 
   local _json_return=${json_return:-object}
   [[ $_json_return == object || $_json_return == array ]] || {

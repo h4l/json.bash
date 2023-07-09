@@ -54,7 +54,8 @@ key=$'
   ( ( :: | == | @@ | \[\[ ) | [^:=[@] )*
 '
 
-type=' : ( auto | bool | false | json | null | number | raw | string | true ) '
+type_name=' ( auto | bool | false | json | null | number | raw | string | true ) '
+type=" : ${type_name:?} "
 
 # The attributes without matching the individual entries. Anything except  ],
 # except ] can be escaped with ]]. We capture ,, and == escapes so that we can
@@ -108,3 +109,4 @@ function format_regex_var() {
 format_regex_var __attributes "${attributes:?}"
 format_regex_var _json_bash_arg_pattern "${argument:?}"
 format_regex_var _json_bash_simple_arg_pattern "$(simple_argument)"
+format_regex_var _json_bash_type_name_pattern "^ ${type_name:?} $"
