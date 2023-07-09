@@ -798,8 +798,8 @@ More:
 EOT
       exit 0;;
     --version)
-      echo -e "json.bash ${JSON_BASH_VERSION:?}\n" \
-              "https://github.com/h4l/json.bash"; exit 0;;
+      json name=json.bash version=${JSON_BASH_VERSION:?} \
+        web="https://github.com/h4l/json.bash"; exit 0;;
   esac
   fn=json
   if [[ $0 =~ [^[:alpha:]](array|object)$ ]]; then fn=json.${BASH_REMATCH[1]}; fi

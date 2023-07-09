@@ -1527,7 +1527,7 @@ json(): failed to encode value as number: 'oops' from 'a:number=oops'
 @test "json.bash CLI :: version" {
   run ./json.bash --version
   [[ $status == 0 ]]
-  [[ $output =~ "json.bash $JSON_BASH_VERSION" ]]
+  [[ $output == '{"name":"json.bash","version":"'"${JSON_BASH_VERSION:?}"'","web":"https://github.com/h4l/json.bash"}' ]]
 }
 
 @test "json.bash CLI :: object output" {
