@@ -1351,6 +1351,20 @@ expected: $expected
     "json(): failed to read file referenced by argument: '${missing_file:?}' from 'key@=${missing_file:?}'" ]]
 }
 
+@test "json known issues" {
+  # Bash treats empty arrays as if they were never defined with set -u 🫠
+  # We could hack around this by running `declare -p` and parsing the output to
+  # see if it reports =(). But this would fail for namerefs pointing to arrays.
+  local -a empty_array=()
+  run json empty[]@=empty_array
+  [[ $status == 3 && \
+    $output =~ "argument references unbound variable: \$empty_array from 'empty[]@=empty_array'" ]]
+
+  # A workaround is to use a non-array var containing an empty string
+  unset empty_array; local empty_array=''
+  json empty[]@=empty_array | equals_json '{"empty":[]}'
+}
+
 @test "json errors are signaled in-band by writing a 0x18 Cancel control character" {
   local bad_number=abc
   local bad_number_file=$(mktemp_bats); printf def > "${bad_number_file:?}"
