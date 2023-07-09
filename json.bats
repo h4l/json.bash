@@ -1519,7 +1519,7 @@ json(): failed to encode value as number: 'oops' from 'a:number=oops'
   for flag in -h --help; do
     run ./json.bash "$flag"
     [[ $status == 0 ]]
-    [[ $output =~ Generate\ JSON\ objects ]]
+    [[ $output =~ Generate\ JSON\. ]]
     [[ $output =~ Usage: ]]
   done
 }

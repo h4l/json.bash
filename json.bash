@@ -552,23 +552,7 @@ function json.parse_argument() {
 # Encode arguments as JSON objects or arrays and print to stdout.
 #
 # Each argument is an entry in the JSON object or array created by the call.
-# Arguments use the syntax:
-#
-# Examples:
-#   json name=Hal  # {"name":"Hal"}
-#   name="Hal" json name=@name  # {"name":"Hal"}
-#   prop=name name="Hal" json @prop=@name  # {"name":"Hal"}
-#   json Length=42 length:string=42  # {"Length":42,length:"42"}
-#   json active=true stopped_date=null name:string=null  # {"active":true,"stopped_date":null,"name":"null"}
-#   json entry:object={"name":"Bob"} # {"entry":{"name":"Bob"}}
-#   data=(4 8 16); json numbers:number[]=@data # {"numbers":[4,8,16]}
-#   json @bar:string@foo bar:string="asdfsd"
-#   json people:json[]@=/tmp/people
-#   json people:json[\n]@=/tmp/people
-#   json people:json[split=\n,]@=/tmp/people
-#   json values:number[split=" "]="123 457 123"
-#   json values:number[split=" ",trim=false]="123 457 123"
-#
+# See the --help message for argument syntax.
 function json() {
   # vars referenced by arguments cannot start with _, so we prefix our own vars
   # with _ to prevent args referencing locals.
@@ -765,10 +749,10 @@ if [[ ${BASH_SOURCE[0]} == "$0" ]]; then # we're being executed directly
     -h|--help)
     prog=$(basename "$0"); prog_obj=${prog%?array} prog_array=${prog_obj}-array
     cat <<-EOT
-Generate JSON objects.
+Generate JSON.
 
 Usage:
-  ${prog:?} [key][:type][=value]...
+  ${prog:?} [options] [--] [key][:type][=value]...
 
 Examples:
   $ ${prog_obj:?} msg="Hello World" size:number=42 enable:true data:false
@@ -778,20 +762,39 @@ Examples:
   $ id=42 date=\$(date --iso) ${prog_obj:?} @id created@=date modified@=date
   {"id":"42","created":"2023-06-23","modified":"2023-06-23"}
 
+  # Reference files with absolute paths, or relative paths starting ./
+  $ printf hunter2 > /tmp/password; jb @/tmp/password
+  {"password":"hunter2"}
+
+  # Nest jb calls using shell process substitution & file references
+  $ jb type=club members:json[]@=<(jb name=Bob; jb name=Alice)
+  {"type":"club","members":[{"name":"Bob"},{"name":"Alice"}]}
+
+  $ jb counts:number[]@=<(seq 3) names[:]=Bob:Alice
+  {"counts":[1,2,3],"names":["Bob","Alice"]}
+
   # Create arrays with ${prog_array}
-  $ ${prog_array:?} '*.md' :raw="\$(${prog_obj:?} max_width:number=80)"
+  $ ${prog_array:?} '*.md' :json@=<(${prog_obj:?} max_width:number=80)
   ["*.md",{"max_width":80}]
 
-  # Change the default value type with json_type=
-  $ json_type=number ${prog_array:?} 1 2 3
-  [1,2,3]
+  # Use special OS files to read stdin
+  $ printf 'foo\nbar\n' | jb @/dev/stdin[]
+  {"stdin":["foo","bar"]}
 
-  # In a bash script/shell, source ${prog_obj:?} and use the json function
-  $ source \$(command -v ${prog_obj:?})
+  # ...or other fun things
+  $ jb args[split=]@=/proc/self/cmdline
+  {"args":["bash","/workspaces/json.bash/bin/jb","args[split=]@=/proc/self/cmdline"]}
+
+  # In a bash script/shell, source json.bash and use the json function
+  $ source json.bash
   $ out=compilerOptions json removeComments:true
   $ files=(a.ts b.ts)
   $ json @compilerOptions:raw @files:string[]
   {"compilerOptions":{"removeComments":true},"files":["a.ts","b.ts"]}
+
+Options:
+  -h, --help    Show this message
+  --version     Show version info
 
 More:
   https://github.com/h4l/json.bash
