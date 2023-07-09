@@ -672,8 +672,8 @@ function json() {
       elif [[ ${_attrs[array]:-} == true ]]; then _split=$'\n';
       else _split=''; fi
 
-      if ! { array=${_array:?} type=${_type:?} split=${_split?} \
-              json.encode_from_file || _status=$?; } < "${_value_file:?}"; then
+      if ! { { array=${_array:?} type=${_type:?} split=${_split?} \
+              json.encode_from_file || _status=$?; } < "${_value_file:?}"; }; then
         echo "json(): failed to read file referenced by argument:" \
           "${_value_file@Q} from ${arg@Q}" >&2; return 2
       fi

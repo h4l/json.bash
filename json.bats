@@ -1313,6 +1313,19 @@ expected: $expected
   run json @__missing
   [[ $status == 1 && $output =~ \
     "argument references unbound variable: \$__missing from '@__missing" ]]
+
+  missing_file=$(mktemp_bats --dry-run)
+  # references to missing files are errors
+  # ... when used as keys
+  run json @${missing_file:?}=value
+  [[ $status == 2 && $output =~ \
+    "json(): failed to read file referenced by argument: '${missing_file:?}' from '@${missing_file:?}=value'" ]]
+
+  # ... and when used as values
+  run json key@=${missing_file:?}
+  echo "$output"
+  [[ $status == 2 && $output =~ \
+    "json(): failed to read file referenced by argument: '${missing_file:?}' from 'key@=${missing_file:?}'" ]]
 }
 
 @test "json.bash json non-errors" {
