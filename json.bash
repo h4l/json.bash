@@ -421,6 +421,43 @@ function json.__jsea_on_chunks_available() {
   "${out_cb:-:}" # call the out_cb, if provided
 }
 
+# Signal failure to output JSON data.
+#
+# This signals the error in two ways, for machine and human audiences. For
+# machines, we poison the $out stream by writing a Cancel (␘ / CAN) control
+# character (0x18, ^X) This and other control characters are not allowed to
+# occur in JSON documents, so it has the effect of rendering the output invalid
+# when interpreted as JSON. The character itself indicates that the data
+# preceding it is invalid. In our case, the output is truncated, either
+# entirely, or partially.
+#
+# This in-band error signalling is more robust than relying only on
+# process/command exit status, as they're easy to ignore, and often hard to
+# check (e.g. when running json.bash in a subshell during process substitution
+# or as part of a pipeline).
+#
+# Secondly, we print a description of the error to stderr as normal.
+#
+# See https://en.wikipedia.org/wiki/Cancel_character
+function json.signal_error() {
+  if [[ $# != 0 ]]; then echo "${@}" >&2; fi
+  json.buffer_output $'\x18'  # Cancel control character
+  if [[ ${out?} == '' ]]; then
+    # When out is a terminal we write a visual Cancel symbol as well as the
+    # actual Cancel, because TTYs don't normally display control chars. We still
+    # emit a newline on error to separate our output from adjacent output.
+    if [[ -t 1 ]]; then json.buffer_output $'␘\n';
+    else json.buffer_output $'\n'; fi
+  fi
+}
+
+# Internal error handler for json.json().
+function json._error() {
+  # We always want to write to $_caller_out because $out may be a temp buffer
+  # which is discarded on error.
+  out=${_caller_out?} json.signal_error "${@}"
+}
+
 # Parse a json argument expression into attributes in an associative array.
 #
 # The argument is not evaluated or checked for semantic validity. e.g. a :bool
@@ -531,7 +568,6 @@ function json.parse_argument() {
 #   json values:number[split=" "]="123 457 123"
 #   json values:number[split=" ",trim=false]="123 457 123"
 #
-
 function json() {
   # vars referenced by arguments cannot start with _, so we prefix our own vars
   # with _ to prevent args referencing locals.
@@ -541,8 +577,8 @@ function json() {
     if [[ ${json_defaults@a} == *A* ]]; then local -n _defaults=json_defaults
     elif [[ ${json_defaults:-} ]] && ! out=_defaults __jpa_array_default='false' \
            json.parse_argument "[${json_defaults}]"; then
-      echo "json(): json_defaults is not structured correctly:" \
-        "${json_defaults@Q}" >&2; return 1
+      json._error "json(): json_defaults is not structured correctly:" \
+        "${json_defaults@Q}"; return 2
     fi
   fi
   local _caller_out=${out:-}
@@ -551,8 +587,8 @@ function json() {
 
   local _json_return=${json_return:-object}
   [[ $_json_return == object || $_json_return == array ]] || {
-    echo "json(): json_return must be object or array or empty: '$_json_return'"
-    return 1
+    json._error "json(): $json_return must be 'object' or 'array' or empty:" \
+      "${_json_return@Q}"; return 2
   }
 
   if [[ $_json_return == object ]]; then json.buffer_output "{"
@@ -579,7 +615,7 @@ function json() {
       esac
     else
       if ! out=_attrs json.parse_argument "$arg"; then
-        echo "json(): argument is not structured correctly: '$arg'" >&2; return 1;
+        json._error "json(): argument is not structured correctly: ${arg@Q}"; return 2;
       fi
     fi
     unset -n {_key,_value}{,_file}; unset {_key,_value}{,_file};
@@ -619,9 +655,8 @@ function json() {
 
         if [[ ! ${_key_file:-} =~ ^\.?/ ]]; then
           unset -n _key_file
-          echo "json(): argument references unbound variable:" \
-            "\$${_attrs[key]} from ${arg@Q}" >&2
-          return 1
+          json._error "json(): argument references unbound variable:" \
+            "\$${_attrs[key]} from ${arg@Q}"; return 3
         fi
       fi
     ;;
@@ -638,9 +673,8 @@ function json() {
 
         if [[ ! ${_value_file:-} =~ ^\.?/ ]]; then
           unset -n _value_file
-          echo "json(): argument references unbound variable:" \
-            "\$${_attrs[val]} from ${arg@Q}" >&2
-          return 1
+          json._error "json(): argument references unbound variable:" \
+            "\$${_attrs[val]} from ${arg@Q}"; return 3
         fi
       fi ;;
     (file) _value_file=${_attrs[val]} ;;
@@ -653,16 +687,16 @@ function json() {
     # Handle the common object string value case a little more efficiently
     if [[ $_type == string && $_json_return == object && $_array != true \
           && ! ( ${_key_file:-} || ${_value_file:-} ) ]]; then
-      join=':' json.encode_string "$_key" "$_value" || return 1
+      join=':' json.encode_string "$_key" "$_value" || { json._error; return 1; }
       continue
     fi
 
     if [[ $_json_return == object ]]; then
       if [[ ${_key_file:-} ]]
       then json.stream_encode_string < "${_key_file:?}" || {
-        echo "json(): failed to read file referenced by argument:" \
-          "${_key_file@Q} from ${arg@Q}" >&2; return 2; }
-      else json.encode_string "$_key" || return 1 ; fi
+        json._error "json(): failed to read file referenced by argument:" \
+          "${_key_file@Q} from ${arg@Q}"; return 4; }
+      else json.encode_string "$_key" || { json._error; return 1; } ; fi
       json.buffer_output ":"
     fi
     local _status=0
@@ -674,12 +708,12 @@ function json() {
 
       if ! { { array=${_array:?} type=${_type:?} split=${_split?} \
               json.encode_from_file || _status=$?; } < "${_value_file:?}"; }; then
-        echo "json(): failed to read file referenced by argument:" \
-          "${_value_file@Q} from ${arg@Q}" >&2; return 2
+        json._error "json(): failed to read file referenced by argument:" \
+          "${_value_file@Q} from ${arg@Q}"; return 4
       fi
       if [[ $_status != 0 ]]; then
-        echo "json(): failed to encode file contents as ${_type:?}: ${_value_file@Q} from ${arg@Q}" >&2
-        return 1
+        json._error "json(): failed to encode file contents as ${_type:?}:" \
+          "${_value_file@Q} from ${arg@Q}"; return 1
       fi
     else
       if [[ $_array == true ]]; then
@@ -689,14 +723,14 @@ function json() {
           elif [[ ${_attrs[array]:-} == true ]]; then _split=$'\n';
           else _split=''; fi
 
-          IFS=${_split}; _value_array=(${_value})
+          IFS=${_split}; _value_array=(${_value})  # intentional splitting
           join=, in=_value_array "$_encode_fn" || _status=$?;
         else join=, in=_value "$_encode_fn" || _status=$?; fi
         json.buffer_output "]"
       else "$_encode_fn" "${_value}" || _status=$?; fi
       if [[ $_status != 0 ]]; then
-        echo "json(): failed to encode value as ${_type:?}: ${_value[@]@Q} from ${arg@Q}" >&2
-        return 1
+        json._error "json(): failed to encode value as ${_type:?}:" \
+          "${_value[*]@Q} from ${arg@Q}"; return 1
       fi
     fi
   done

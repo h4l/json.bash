@@ -2,6 +2,8 @@
 # shellcheck shell=bash
 set -u -o pipefail
 
+bats_require_minimum_version 1.5.0
+
 load json.bash
 
 setup() {
@@ -1236,7 +1238,8 @@ expected: $expected
   [[ $status == 1 ]]
   # no JSON in output:
   [[ ! $output =~ '{' ]]
-  [[ "$output" == *"failed to encode value as number: 'notanumber' from 'error:number=notanumber'" ]]
+  echo "${output@Q}"
+  [[ "$output" == *"failed to encode value as number: 'notanumber' from 'error:number=notanumber'"* ]]
 
   # Same for array output
   local buff=() err=$(mktemp_bats)
@@ -1248,11 +1251,11 @@ expected: $expected
   [[ ${status:-} == 1 ]]
   [[ ! $(cat "${err:?}") =~ '{' ]]
   [[ $(cat "${err:?}") == \
-    *"failed to encode value as number: 'notanumber' from 'error:number=notanumber'" ]]
-  [[ ${#buff[@]} == 2 && ${buff[0]} == '{"ok":true}' \
-    && ${buff[1]} == '{"garbage":false}' ]]
+    *"failed to encode value as number: 'notanumber' from 'error:number=notanumber'"* ]]
+  declare -p buff
+  [[ ${#buff[@]} == 3 && ${buff[0]} == '{"ok":true}' \
+    && ${buff[1]} == $'\x18' && ${buff[2]} == '{"garbage":false}' ]]
 }
-
 
 @test "json.bash json option handling" {
   # Keys can start with -. This will conflict with command-line arguments if we
@@ -1274,9 +1277,9 @@ expected: $expected
     # invalid types are not allowed
     :cheese[]
   )
-  for arg in "${invalid_args[@]}"; do
+  for arg in "${invalid_args[@]:?}"; do
     run json "${arg:?}"
-    [[ $status == 1 && $output =~ "invalid argument: '${arg:?}'" ]] || {
+    [[ $status == 2 && $output =~ "invalid argument: '${arg:?}'" ]] || {
       echo "arg '$arg' did not fail: $output" >&2; return 1
     }
   done
@@ -1311,21 +1314,84 @@ expected: $expected
 
   # references to missing variables are errors
   run json @__missing
-  [[ $status == 1 && $output =~ \
+  [[ $status == 3 && $output =~ \
     "argument references unbound variable: \$__missing from '@__missing" ]]
 
   missing_file=$(mktemp_bats --dry-run)
   # references to missing files are errors
   # ... when used as keys
   run json @${missing_file:?}=value
-  [[ $status == 2 && $output =~ \
+  [[ $status == 4 && $output =~ \
     "json(): failed to read file referenced by argument: '${missing_file:?}' from '@${missing_file:?}=value'" ]]
 
   # ... and when used as values
   run json key@=${missing_file:?}
   echo "$output"
-  [[ $status == 2 && $output =~ \
+  [[ $status == 4 && $output =~ \
     "json(): failed to read file referenced by argument: '${missing_file:?}' from 'key@=${missing_file:?}'" ]]
+}
+
+@test "json errors are signaled in-band by writing a 0x18 Cancel control character" {
+  local bad_number=abc
+  local bad_number_file=$(mktemp_bats); printf def > "${bad_number_file:?}"
+  declare -A examples=(
+    [bad_defaults_cmd]='ok'            [bad_defaults_status]=2     [bad_defaults_defaults]='type=bad'
+    [arg_syntax_error_cmd]='foo[=bar'  [arg_syntax_error_status]=2
+    [bad_return_cmd]='ok'              [bad_return_status]=2       [bad_return_return]='bad'
+
+    [unbound_key_var_cmd]='@__bad='      [unbound_key_var_status]=3
+    [unbound_val_var_cmd]='a@=__bad'     [unbound_val_var_status]=3
+    [missing_key_file_cmd]='@./__bad='   [missing_key_file_status]=4
+    [missing_val_file_cmd]='a@=./__bad=' [missing_val_file_status]=4
+
+    [invalid_val_file_cmd]="a:number@=${bad_number_file:?}"         [invalid_val_file_status]=1
+    [invalid_val_array_file_cmd]="a:number[]@=${bad_number_file:?}" [invalid_val_array_file_status]=1
+    [invalid_val_var_cmd]="a:number@=bad_number"                    [invalid_val_var_status]=1
+    [invalid_val_array_var_cmd]="a:number[]@=bad_number"            [invalid_val_array_var_status]=1
+    [invalid_val_str_cmd]="a:number=bad"                            [invalid_val_str_status]=1
+    [invalid_val_array_str_cmd]="a:number[]=bad"                    [invalid_val_array_str_status]=1
+  )
+  readarray -t example_names < \
+    <(grep -P '_cmd$' <(printf '%s\n' "${!examples[@]}") | sed -e 's/_cmd$//' | sort)
+
+  for name in "${example_names[@]:?}"; do
+    local defaults=${examples[${name:?}_defaults]:-}
+    local return=${examples[${name:?}_return]:-}
+    local expected_status=${examples[${name:?}_status]:?}
+    local cmd=${examples[${name:?}_cmd]:?}
+
+    for json_stream in '' true; do
+      json_return=${return?} json_defaults=${defaults?} \
+        run --separate-stderr json "${cmd:?}"
+      [[ $status == $expected_status && $stderr =~ "json():" \
+        && ${output:(( ${#output} - 1 ))} == $'\x18' ]]
+
+      local buff=() status=0
+      json_return=${return?} json_defaults=${defaults?} out=buff json "${cmd:?}" || status=$?
+      [[ $status == $expected_status && ${buff[-1]} == $'\x18' ]]
+      echo "name=${name@Q} json_stream=${json_stream@Q}"
+    done
+  done
+}
+
+@test "json.bash the stream-poisoning Cancel character is visually marked with ␘ when the output is an interactive terminal" {
+  local stdout=$(mktemp_bats) stderr=$(mktemp_bats) status=0
+
+  # Running under script simulates an interactive terminal
+  SHELL=$(command -v bash) ERR=${stderr:?} \
+    script -qefc '. json.bash; json a:number=oops 2> "${ERR:?}"' /dev/null \
+    > "${stdout:?}" || status=$?
+
+  # Output contains both a real 0x18 Cancel char, and a symbolic version:
+  diff -u <(printf '\x18␘\r\n') "${stdout:?}"
+  # Note: We see \r\n despite printing \n because TTYs translate \n into \r\n,
+  # e.g. see: https://pexpect.readthedocs.io/en/stable/overview.html#find-the-end-of-line-cr-lf-conventions
+
+  err="json.encode_number(): not all inputs are numbers: 'oops'
+json(): failed to encode value as number: 'oops' from 'a:number=oops'
+"
+  diff -u <(printf "${err:?}") "${stderr:?}"
+  [[ $status == 1 ]]
 }
 
 @test "json.bash json non-errors" {
