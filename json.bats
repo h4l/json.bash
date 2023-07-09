@@ -1027,6 +1027,12 @@ expected: $expected
   # duplicate keys is undefined.
   [[ $(json a=A a=B a=C) == '{"a":"A","a":"B","a":"C"}' ]]
   json a=A a=B a=C | compare=parsed equals_json '{a: "C"}'
+
+  # References can point to array indexes and other namerefs
+  local -A paths=([ls]=/bin/ls [cat]=/bin/cat); local progs=(ls cat)
+  local -n catref=paths[cat]
+  json @paths[[ls]=ls_path @progs[[1]=prog2 @catref=ref \
+    | equals_json '{"/bin/ls": "ls_path", "cat": "prog2", "/bin/cat": "ref"}'
 }
 
 @test "json.bash json values" {
@@ -1043,6 +1049,12 @@ expected: $expected
   # There are no restrictions on values following a =
   json message=@value:with=reserved-chars \
     | equals_json '{message: "@value:with=reserved-chars"}'
+
+  # References can point to array indexes and other namerefs
+  local -A paths=([ls]=/bin/ls [cat]=/bin/cat); local progs=(ls cat)
+  local -n catref=paths[cat]
+  json ls_path@=paths[ls] prog2@=progs[1] ref@=catref \
+    | equals_json '{ls_path: "/bin/ls", prog2: "cat", ref: "/bin/cat"}'
 }
 
 @test "json.bash json.array values" {
