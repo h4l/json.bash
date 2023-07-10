@@ -1280,6 +1280,16 @@ expected: $expected
   json a=x -- -a=y -- --a=z | equals_json '{a:"x","-a":"y","--":"--","--a":"z"}'
 }
 
+@test "json.bash json non-simple arguments are handled by full parser" {
+  json @@foo=x | equals_json '{"@foo":"x"}'
+  json == | equals_json '{"=":"="}'  # key is = but key gets re-used as value
+  json === | equals_json '{"=":""}'
+  json ===x | equals_json '{"=":"x"}'
+  json ==x= | equals_json '{"=x":""}'
+  json a[[b=x | equals_json '{"a[b":"x"}'
+  json a::b=x | equals_json '{"a:b":"x"}'
+}
+
 @test "json.bash json errors" {
   invalid_args=(
     # inline keys can't contain @

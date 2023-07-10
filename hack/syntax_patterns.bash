@@ -80,7 +80,7 @@ function simple_argument() {
   local attributes=$'
     ( \[ ([^]:=[@,])? \] )
   '
-  local value=' @=\.?/? | = '
+  local value=' ( @? = ) ( [^=] .? | $ ) '
 
   echo "
     ^ ( ${key:?} )? ( ${type:?} )? ( ${attributes:?} )? ( ${value:?} | $ )

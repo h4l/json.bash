@@ -5,7 +5,7 @@ JSON_BASH_VERSION=0.1.0
 
 # Generated in hack/argument_pattern.bash
 _json_bash_arg_pattern=$'^((@(::|==|@@|\\[\\[|[^:=[@]))?((::|==|@@|\\[\\[)|[^:=[@])*)?(:(auto|bool|false|json|null|number|raw|string|true))?(\\[((\\]\\]|,,|==)|[^]])*\\])?(@?=|$)'
-_json_bash_simple_arg_pattern=$'^((@[^:=[@]+)|([^:=[@]+))?(:(auto|bool|false|json|null|number|raw|string|true))?((\\[([^]:=[@,])?\\]))?(@=\\.?/?|=|$)'
+_json_bash_simple_arg_pattern=$'^((@[^:=[@]+)|([^:=[@]+))?(:(auto|bool|false|json|null|number|raw|string|true))?((\\[([^]:=[@,])?\\]))?((@?=)([^=].?|$)|$)'
 _json_bash_type_name_pattern=$'^(auto|bool|false|json|null|number|raw|string|true)$'
 _json_bash_number_pattern='-?(0|[1-9][0-9]*)(\.[0-9]*)?([eE][+-]?[0-9]+)?'
 _json_bash_auto_pattern="\"(null|true|false|${_json_bash_number_pattern:?})\""
@@ -601,9 +601,9 @@ function json() {
       (*:?*'['*)    _attrs[type]=${BASH_REMATCH[5]} ;;&
       (*'[[]]'*)    _attrs[array]=true ;;&
       (*'[['?']']*) _attrs[array]=true _attrs[split]=${BASH_REMATCH[8]} ;;&
-      (*=)          _attrs[val]=${arg:${#BASH_REMATCH[0]}} _attrs[@val]=str ;;&
-      (*@=@(./|/))  _attrs[val]="${BASH_REMATCH[9]:2}${arg:${#BASH_REMATCH[0]}}" _attrs[@val]=file ;;
-      (*@=)         _attrs[@val]=var ;;&
+      (*=*)         _attrs[val]="${BASH_REMATCH[11]}${arg:${#BASH_REMATCH[0]}}" _attrs[@val]=str ;;&
+      (*@=@(./|/*))  _attrs[@val]=file ;;
+      (*@=*)        _attrs[@val]=var ;;&
       esac
     else
       if ! out=_attrs json.parse_argument "$arg"; then
