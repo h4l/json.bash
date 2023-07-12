@@ -32,7 +32,6 @@ set -euo pipefail
 #   attr-value-escape = ( ",," | "]]" )
 #
 # Notes:
-# - \x00-\x1F are the control characters
 # - ref-key: can't have an empty value to avoid ambiguity with =value rule.
 # - Escaping: We use doubles of reserved characters to escape them. e.g. the key
 #   @@foo::bar becomes @foo:bar.
