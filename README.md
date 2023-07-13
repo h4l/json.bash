@@ -252,7 +252,7 @@ variable-length arrays containing the same type.
 
 Values are strings unless explicitly typed.
 
-```console tesh-session="types" tesh-exitcodes="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0"
+```console tesh-session="types" tesh-exitcodes="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0"
 $ jb data=42 surname=null favourite_word=true
 {"data":"42","surname":"null","favourite_word":"true"}
 
@@ -280,33 +280,37 @@ $ # auto can be used selectively like other types
 $ data=42 jb a=42 b:auto=42 c:auto@=data
 {"a":"42","b":42,"c":42}
 
-$ # In the Bash API (but not yet the jb CLI), the default string type can be
-$ # changed with json_defaults option:
+$ # In the Bash API (but not yet the jb CLI), the default type can be changed
+$ # using the json_defaults option. First you create a named defaults set:
 $ source json.bash
-$ json_defaults=type=number json data=42
+$ json.define_defaults my_defaults type=number
+
+$ # Then use the name with json_defaults when calling json to use your defaults
+$ json_defaults=my_defaults json data=42
 {"data":42}
 
 $ # In which case strings need to be explicitly typed
-$ json_defaults=type=number json data=42 msg=Hi
+$ json_defaults=my_defaults json data=42 msg=Hi
 json.encode_number(): not all inputs are numbers: 'Hi'
 json(): failed to encode value as number: 'Hi' from 'msg=Hi'
 ␘
 
-$ json_defaults=type=number json data=42 msg:string=Hi
+$ json_defaults=my_defaults json data=42 msg:string=Hi
 {"data":42,"msg":"Hi"}
 ```
 
 <details>
   <summary>Why does <code>json.bash</code> require explicit types?</summary>
-  <h4>Why does `json.bash` require explicit types?</h4>
+  <h4>Why does <code>json.bash</code> require explicit types?</h4>
   <p>Type coercion can look good in demos, but my opinion is that in practice,
   fields are more commonly of a specific type than a union of several options,
   so coercing types by default makes it harder to achieve correct behaviour in
   the common case. The <a href="https://hitchdev.com/strictyaml/why/implicit-typing-removed/">Norway Problem</a>
   is worth reading about if you're not familiar with it.</p>
 
-  <p>Regardless, you can make the <code>:auto</code> type the default by setting <code>json_defaults=type=auto</code> when calling <code>json</code> from the
-  Bash API. (This isn't yet exposed through the <code>jb</code> CLI.)</p>
+  <p>Regardless, you can make the <code>:auto</code> type the default by using <code>json_defaults</code> when calling <code>json</code> from the
+  Bash API (as demonstrated above). (This isn't yet exposed through the
+  <code>jb</code> CLI.)</p>
 </details>
 
 ### Value arrays (uniform types, variable length)

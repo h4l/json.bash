@@ -3,6 +3,8 @@ shopt -s extglob # required to match our auto glob patterns
 
 JSON_BASH_VERSION=0.1.0
 
+declare -g -A _json_defaults=()
+
 function json.is_compatible() {
   # musl-libc's regex implementation erases previously-matched capture groups,
   # which causes our patterns to not capture correctly. Not sure if their
@@ -561,6 +563,29 @@ function json.parse_argument() {
   esac
 }
 
+function json.define_defaults() {
+  # We pre-define sets of defaults for two reasons. Firstly to avoid the
+  # complications of detecting if an associative array var is set. Secondly, to
+  # avoid needing to validate defaults on each json() call.
+  local name=${1:?"json.define_defaults(): first argument must be the name for the defaults"} \
+    attrs_string=${2:-}
+  local var_name="_json_defaults_${name:?}"
+
+  _json_defaults["${name:?}"]="${var_name:?}"
+  declare -g -A "${var_name:?}=()"
+  local -n defaults="${var_name:?}"
+  # Can't fail to parse because we escape ] as ]]
+  out="defaults" __jpa_array_default='false' json.parse_argument \
+      "[${attrs_string//']'/']]'}]"
+
+  if [[ ! ${defaults[type]:-string} =~ $_json_bash_type_name_pattern ]]; then
+    local error="json.define_defaults(): defaults contain invalid 'type': ${defaults[type]@Q}"
+    unset "_json_defaults[${name:?}]" "${var_name:?}"
+    out='' json.signal_error "${error:?}"; return 2
+  fi
+}
+json.define_defaults __empty__ ''
+
 # Encode arguments as JSON objects or arrays and print to stdout.
 #
 # Each argument is an entry in the JSON object or array created by the call.
@@ -574,20 +599,11 @@ function json() {
   if [[ ${json_stream:-} != true ]]
   then local out=_json_buff _json_buff=(); fi
 
-  local -A _defaults
-  if [[ -v json_defaults || -v json_defaults[@] ]]; then
-    if [[ ${json_defaults@a} == *A* ]]; then
-      unset _defaults; local -n _defaults=json_defaults
-    elif [[ ${json_defaults:-} ]]; then
-      # Can't fail to parse because we escape ] as ]]
-      out=_defaults __jpa_array_default='false' json.parse_argument \
-        "[${json_defaults//']'/']]'}]"
-    fi
-    if [[ ! ${_defaults[type]:-string} =~ $_json_bash_type_name_pattern ]]; then
-      json._error "json(): json_defaults contains invalid 'type':" \
-        "${_defaults[type]@Q}"; return 2
-    fi
+  if [[ "${json_defaults:-}" && ! ${_json_defaults["${json_defaults}"]:-} ]]; then
+    json._error "json(): json.define_defaults has not been called for" \
+      "json_defaults value: ${json_defaults@Q}"; return 2
   fi
+  local -n _defaults="${_json_defaults[${json_defaults:-__empty__}]:?}"
 
   local _json_return=${json_return:-object}
   [[ $_json_return == object || $_json_return == array ]] || {

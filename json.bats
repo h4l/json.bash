@@ -1083,11 +1083,6 @@ expected: $expected
   json data=42 | equals_json '{data: "42"}'
   # Non-string values need explicit types
   json data:number=42 | equals_json '{data: 42}'
-  # The default string type can be changed with json_type
-  json_defaults=type=number json data=42 | equals_json '{data: 42}'
-  # In which case strings need to be explicitly typed
-  json_defaults=type=number json data=42 msg:string=Hi \
-    | equals_json '{data: 42, msg: "Hi"}'
   # true/false/null have types which don't require redundant values
   json active:true enabled:false data:null \
     | equals_json '{active: true, enabled: false, data: null}'
@@ -1100,7 +1095,8 @@ expected: $expected
   # The auto type outputs true/false/null and number values. You can opt into
   # this globally by exporting json_type=auto as an environment variable.
   # JSON object and array values are not parsed with auto, only simple values.
-  json_defaults=type=auto json a=42 b="Hi" c=true d=false e=null f=[] g={} \
+  json.define_defaults autos type=auto
+  json_defaults=autos json a=42 b="Hi" c=true d=false e=null f=[] g={} \
     | equals_json '{a: 42, b: "Hi", c: true, d: false, e: null,
                     f: "[]", g: "{}"}'
   # auto can be used selectively like other types
@@ -1156,6 +1152,37 @@ expected: $expected
   # empty inline values are empty arrays
   json str:string[]= num:number[]= bool:bool[]= raw:raw[]= json:json[]= \
     | equals_json '{str: [], num: [], bool: [], raw: [], json: []}'
+}
+
+@test "json.bash json.define_defaults :: returns 2 if type is invalid" {
+  run json.define_defaults example type=cheese
+  [[ $status == 2 \
+    && $output =~ "json.define_defaults(): defaults contain invalid 'type': 'cheese'" ]]
+}
+
+@test "json.bash json :: uses default type from json_defaults" {
+  # The default string type can be changed with json_defaults
+  json.define_defaults numeric type=number
+  json_defaults=numeric json data=42 | equals_json '{data: 42}'
+  # In which case strings need to be explicitly typed
+  json_defaults=numeric json data=42 msg:string=Hi \
+    | equals_json '{data: 42, msg: "Hi"}'
+}
+
+@test "json.bash json :: uses default array flag from json_defaults" {
+  # The default array=true/false flag can be changed with json_defaults
+  json.define_defaults arrays array=true
+  json_defaults=arrays json data=42 | equals_json '{data: ["42"]}'
+  # array can be disabled with an explicit attribute
+  json_defaults=arrays json data=42 msg[array=false]=Hi \
+    | equals_json '{data: ["42"], msg: "Hi"}'
+}
+
+@test "json.bash json.define_defaults :: allows defaults to be re-defined" {
+  json.define_defaults example type=number
+  json_defaults=example json a=42 | equals_json '{a:42}'
+  json.define_defaults example type=auto,array=true
+  json_defaults=example json a=42 b=hi | equals_json '{a:[42],b:["hi"]}'
 }
 
 @test "json.bash json nested JSON with :json and :raw types" {
@@ -1306,13 +1333,10 @@ expected: $expected
     }
   done
 
-  # Invalid type in json_defaults is an error
-  json_defaults=type=cheese run json
-  [[ $status == 2 && $output =~ "json_defaults contains invalid 'type': 'cheese'" ]]
-  declare -g -A json_defaults=([type]=peas)
-  run json
-  [[ $status == 2 && $output =~ "json_defaults contains invalid 'type': 'peas'" ]]
-  unset json_defaults
+  # A json_defaults value that is not a name that has been defined with
+  # json.define_defaults is an error.
+  json_defaults=__undefined__ run json
+  [[ $status == 2 && $output =~ "json(): json.define_defaults has not been called for json_defaults value: '__undefined__'" ]]
 
   # Empty raw values are errors
   run json a:raw=
