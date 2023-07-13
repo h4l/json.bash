@@ -3,6 +3,18 @@ shopt -s extglob # required to match our auto glob patterns
 
 JSON_BASH_VERSION=0.1.0
 
+function json.is_compatible() {
+  # musl-libc's regex implementation erases previously-matched capture groups,
+  # which causes our patterns to not capture correctly. Not sure if their
+  # behaviour is valid/correct or not, but it doesn't work right now.
+  # shellcheck disable=SC2050
+  if [[ 'aba' =~ ^(a|(b)){3}$ && ${BASH_REMATCH[2]} == '' ]]; then
+    json.signal_error "json.detect_incompatibility(): detected incompatible" \
+      "regex implementation: your shell's regex implementation forgets" \
+      "previously-matched capture groups"; return 1
+  fi
+}
+
 # Generated in hack/argument_pattern.bash
 _json_bash_arg_pattern=$'^((@(::|==|@@|\\[\\[|[^:=[@]))?((::|==|@@|\\[\\[)|[^:=[@])*)?(:(auto|bool|false|json|null|number|raw|string|true))?(\\[((\\]\\]|,,|==)|[^]])*\\])?(@?=|$)'
 _json_bash_simple_arg_pattern=$'^((@[^:=[@]+)|([^:=[@]+))?(:(auto|bool|false|json|null|number|raw|string|true))?((\\[([^]:=[@,])?\\]))?((@?=)([^=].?|$)|$)'
@@ -743,6 +755,11 @@ function json.object() {
 function json.array() {
   json_return=array json "$@"
 }
+
+if ! out='' json.is_compatible; then
+  if [[ ${BASH_SOURCE[0]} == "$0" ]]; then exit 2
+  else return 2; fi
+fi
 
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then # we're being executed directly
   case ${1:-} in
