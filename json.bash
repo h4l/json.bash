@@ -512,7 +512,7 @@ function json.parse_argument() {
   esac
 
   case "${_jpa_keyref1}_${_jpa_keyesc}" in # unescape key only if escapes exist
-  ([@:[=]?_*|*_[@:[=]?) # detect double-char escape after initial @ or later
+  (['@:[=']?_*|*_['@:[=']?) # detect double-char escape after initial @ or later
     _jpa_out[key]=${_jpa_out[key]//@@/@}
     _jpa_out[key]=${_jpa_out[key]//::/:}
     _jpa_out[key]=${_jpa_out[key]//'[['/[}
