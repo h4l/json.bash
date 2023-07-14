@@ -1,0 +1,7 @@
+{
+  "name": "json.bash",
+  "image": "ghcr.io/h4l/json.bash/devcontainer:latest",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
+  }
+}
