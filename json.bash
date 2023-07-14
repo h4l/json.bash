@@ -401,7 +401,7 @@ function json._jevff_close_stdin() { exec 0<&-; }
 # their $out buffer via the $out_cb callback.)
 function json.stream_encode_array() {
   local _jsea_raw_chunks=() _jsea_encoded_chunks=() _jsea_caller_out=${out:-} \
-    _jsea_last_emit= _jsea_separator=() _jsea_error=
+    _jsea_last_emit=4294967295 _jsea_separator=() _jsea_error=
   out=$_jsea_caller_out json.buffer_output '['
   readarray -t -d "${split?}" -C json.__jsea_on_chunks_available \
     -c "${json_buffered_chunk_count:-1024}" _jsea_raw_chunks
