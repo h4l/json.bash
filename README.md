@@ -585,7 +585,7 @@ $ jb club:json@=<(
 >     jb name=h4l; jb name@=./not-found
 >   )
 > )
-/workspaces/json.bash/bin/jb: line ...: ./not-found: No such file or directory
+/.../bin/jb: line ...: ./not-found: No such file or directory
 json(): failed to read file referenced by argument: './not-found' from 'name@=./not-found'
 json.encode_json(): not all inputs are valid JSON: '{"name":"h4l"}' $'\030'
 json(): failed to encode file contents as json: '/dev/fd/...' from 'members:json[]@=/dev/fd/...'
