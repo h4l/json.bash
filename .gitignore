@@ -1,0 +1,8 @@
+.*
+!.devcontainer
+!.editorconfig
+!.envrc
+!.prettierrc.json
+!.dockerignore
+!.git*
+/build
