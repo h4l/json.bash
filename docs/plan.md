@@ -69,3 +69,64 @@ For arrays:
 $ jb-array :number=42 +:number[:]=1:2:3:4 :number=5
 [42,1,2,3,4,5]
 ```
+
+## Optional and required values; Strict / permissive values
+
+Currently we're strict about value representation — we fail with an error if a
+value is not in exactly the right format. We could introduce a notation to
+modify this, allowing coercion of values:
+
+```Console
+$ jb enabled:bool~=1 active:~bool=
+{"enabled":true,"active":false}
+
+$ jb enabled:bool~=1 active:~bool?=0
+{"enabled":true,"active":false}
+```
+
+Also, allowing values to be omitted when not present. Also for missing files or
+unset variables.
+
+```Console
+$ jb enabled:~bool=1 active:bool?=
+{"enabled":true}
+```
+
+There could be advantages to making use of the extensible named attribute
+syntax, rather than introducing syntax-level additions, like `~`. Currently
+using attributes implies `[...]` which makes a value-array unless
+`[array=false]` is used. We could allow a neutral attribute syntax using `()`
+that preserves the default type:
+
+```Console
+$ # =true (empty key) implying a default
+$ jb enabled:bool(~)=1 active:bool(?)= enhanced:bool(~,?,=true)=
+{"enabled":true,"enhanced":true}
+
+$ # A way to omit on invalid value for type could be useful, it would allow
+$ # multiple args for the same key to represent a union of types without direct
+$ # syntax support in arguments:
+$ level=42 jb @level:number(!,?) @level:string(?)
+{"level":42}
+
+$ level=high jb @level:number(!,?) @level:string(?)
+{"level":"high"}
+
+$ level= jb @level:number(!,?) @level:string(?)
+{}
+```
+
+Here `!`,`?` would mean strict encoding but optional, so omit rather than fail
+when the value is not a number. `!` is the current default, but could re-apply
+strictness when `json_defaults` was used to make the default permissive.
+
+`()` need quoting in bash, so they would be awkward to use. Perhaps `//`
+instead:
+
+```Console
+$ level=high jb @level:number/!,?/ @level:string/?/
+{"level":"high"}
+
+$ data= jb @data:/?/
+{}
+```
