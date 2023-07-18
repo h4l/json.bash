@@ -171,11 +171,13 @@ type-name        = ( "string" | "number" | "bool" | "true" | "false" | "null"
 key-flags        = ( splat-flag | [ splat-flag ] flags ) [ start-of-key ]
 key-flags        = [ splat-flag ] flags [ start-of-key ]
 value-flags      =  flags [ start-of-value ]
-flags            = ( error-empty-flag [ sub-empty-flag | omit-empty-flag ] [ ref-flag ]
+flags            = ( required-flag [ error-empty-flag ] [ sub-empty-flag | omit-empty-flag ] [ ref-flag ]
+                     | error-empty-flag [ sub-empty-flag | omit-empty-flag ] [ ref-flag ]
                      | sub-empty-flag [ ref-flag ]
                      | omit-empty-flag [ ref-flag ]
                      | ref-flag )
 splat-flag       = "..."
+required-flag    = "+"
 error-empty-flag = "~"
 omit-empty-flag  = "?"
 sub-empty-flag   = "??"
