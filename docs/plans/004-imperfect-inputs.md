@@ -134,8 +134,7 @@ depends on the `empty*` attributes of the argument.
 An argument does not store its empty behaviour in a single attribute with a
 fixed name. Instead, one of a priority-ordered list of possible `empty*`
 attribute names is resolved by checking for the existence of each name until a
-match is found. (A match is guaranteed, as the lowest-priority values have
-[Default attributes](#default-attributes) defined.)
+match is found.
 
 The key or value has 4 properties which are used when resolving the default:
 
@@ -143,8 +142,6 @@ The key or value has 4 properties which are used when resolving the default:
   type `string`
 - `{collection}`: If the value is an array or object, `array` or `object`
   respectively, otherwise the empty string.
-- `{position}`: Whether the input is the key or value of the entry: `key` or
-  `val`
 - `{source}`: Where the input was read from
   - inline argument value: `arg` (Also used when a key or value is not
     syntactically present in the argument.)
@@ -153,26 +150,26 @@ The key or value has 4 properties which are used when resolving the default:
 
 The attribute defining the empty behaviour is resolved by finding the first
 attribute that exists, trying all the attribute names resulting from populating
-the following templates with the above properties, in order, starting from 1.:
+the following templates with the above properties, in order, starting from 1. If
+an attribute set but is empty, resolution continues as if the attribute did not
+exist:
 
-- For key or single values:
-  1. `empty_{position}`
+- For keys:
+  1. `empty_key`
+  1. `empty_{source}_key`
+  1. `empty_{source}_string`
+  1. `empty_string`
+- For single values:
   1. `empty`
   1. `empty_{source}_{type}`
   1. `empty_{source}`
   1. `empty_{type}`
 - For array or object values:
-  1. `empty_{position}`
   1. `empty`
   1. `empty_{source}_{type}_{collection}`
   1. `empty_{source}_{collection}`
   1. `empty_{type}_{collection}`
   1. `empty_{collection}`
-
-> (The ordering and naming are chosen to allow the `empty` or `empty_key`
-> properties to succinctly override the default behaviour value for specific
-> argument, while allowing fine-grained control over the behaviour of empty
-> values from different sources and types.)
 
 The value of the resolved `empty*` attribute is interpreted as follows:
 
@@ -191,13 +188,17 @@ The value of the resolved `empty*` attribute is interpreted as follows:
 ## Default attributes
 
 Attributes defined by `json.define_defaults` (and thus the default-defaults for
-`json`) have following defaults:
+`json`) have following defaults.
 
+- `empty_file_key=error`
+- `empty_var_key=error`
+- `empty_file=error`
+- `empty_var=error`
 - `empty_array=[]`
 - `empty_auto=""`
 - `empty_bool=false`
 - `empty_false=false`
-- `empty_json=error`
+- `empty_json=null`
 - `empty_null=null`
 - `empty_number=0`
 - `empty_object={}`
@@ -205,43 +206,124 @@ Attributes defined by `json.define_defaults` (and thus the default-defaults for
 - `empty_string=""`
 - `empty_true=true`
 
+The effect is that empty keys and values from file and variable references are
+errors, but empty values from inline argument values can be empty. When these
+errors are overridden to the empty string, empty values will receive default
+values appropriate for their intended type.
+
 ## Shorthand syntax
 
 The argument syntax is extended to allow arguments to define optional entries
-without explicitly setting attributes in common cases.
+without explicitly setting attributes in common cases. Keys and values can be
+preceeded by:
 
-The argument type grammar rule is currently defined as:
+- `+` to make all empty values errors
+- `~` to have missing or unreadable files/variables treated as empty instead of
+  errors
+- `?` to omit entries with an empty value
+- `??` to substitute the empty value for the a default value for its type (which
+  may be customised by setting defaults for the `json` call, in the same way as
+  the [Default attributes](#default-attributes) are defined)
 
-```
-type = ":" ( "string" | "number" | "bool" | "true" | "false"
-           | "null" | "raw" | "auto" )
-```
-
-With shorthand optional syntax, it becomes:
-
-```
-type             = ":" key-flags
-                   ( "string" | "number" | "bool" | "true" | "false" | "null"
-                     | "raw" | "auto" )
-                   value-flags
-
-key-flags        = [required-flag] [error-empty-flag] [ omit-empty-flag ]
-value-flags      = [required-flag] [error-empty-flag]
-                   [ omit-empty-flag | null-empty-flag ]
-required-flag    = "!"
-error-empty-flag = "~"
-omit-empty-flag  = "?"
-null-empty=flag   = "??"
-```
+For details of the syntax changes, refer to
+[docs/plans/005-revised-syntax.md](./005-revised-syntax.md).
 
 When present, the flag rules implicitly define the following attributes at the
 beginning of the argument's attributes list:
 
 - `key-flags`:
-  - `required-flag`: `no_key=error,empty_key=error`
-  - `error-empty-flag`: `no_key=empty,empty_key=omit`
-  - `null-empty=flag`: `empty_key=null`
+  - required-flag `+`:
+    `no_key=error,empty_key=error,empty_arg_key=error,empty_file_key=error,empty_var_key=error`
+  - error-empty-flag `~`: `no_key=empty`
+  - omit-empty-flag `?`:
+    `empty_key=,empty_arg_key=omit,empty_file_key=omit,empty_var_key=omit`
+  - sub-empty-flag `??`:
+    `empty_key=,empty_arg_key=,empty_file_key=,empty_var_key=`
 - `value-flags`:
-  - `required-flag`: `no_val=error,empty_val=error`
-  - `error-empty-flag`: `no_val=empty,empty_val=omit`
-  - `null-empty=flag`: `empty_val=null`
+  - required-flag `+`:
+    `no_val=error,empty=error,empty_arg=error,empty_file=error,empty_var=error`
+  - error-empty-flag `~`: `no_val=empty`
+  - omit-empty-flag `?`: `empty=,empty_arg=omit,empty_file=omit,empty_var=omit`
+  - sub-empty-flag `??`: `empty=,empty_arg=,empty_file=,empty_var=`
+
+The effect of `sub-empty-flag` setting the empty attributes to the empty string
+is that resolution will cascade to the default empty values, defined in
+[Default attributes](#default-attributes).
+
+The required-flag `+` makes empty values from inline argument values errors. It
+will also restore the default empty-error behaviour for other sources, which
+will have an effect if the defaults in effect are to not error.
+
+## Examples
+
+```Console
+$ # Using the syntax revision from docs/plans/005-revised-syntax.md
+
+# @name is empty and omitted due to ?
+$ name= jb id:number=1 @name? other=
+{"id":1,"other":""}
+
+# ? applied to key and value
+$ name= jb id:number=1 ?@name?
+{"id":1}
+
+# @name is empty and uses the default value of "" due to ??
+$ name= jb id:number=1 @name??
+{"id":1,"name":""}
+
+$ # jb-catch does not exist, but works like this
+$ jb ok:true | jb-catch
+{"ok":true}
+
+$ # jb-catch sees the 0x18 Cancel from the initial jb failing, and outputs nothing
+$ jb ok:true=error | jb-catch
+0
+
+$ name="proj_1" jb @name repo_details:json??@<(
+>   jb url@=<(grep -P '^https://.*$' ./repo.txt) | jb-catch
+> )
+...
+{"name":"proj_1","repo_details":null}
+
+$ grep -P '^https://.*$' ./repo.txt
+grep: ./repo.txt: No such file or directory
+
+$ jb url@<(grep -P '^https://.*$' ./repo.txt)
+...
+json(): empty file referenced by argument: '/dev/fd/...' from 'url@=/dev/fd/...'
+␘
+
+$ prop= jb @prop=Example
+json(): argument references empty variable: $prop from '@prop=Example'
+
+$ jb @prop=Example
+json(): argument references unbound variable: $prop from '@prop=Example'
+
+$ jb ~@prop=Example
+json(): argument references empty variable: $prop from '~@prop=Example'
+
+$ jb ~?@prop=Example
+{}
+
+$ jb ~??@prop=Example
+{"":"Example"}
+
+$ jb ~@propstring/empty_key="missing"/=Example
+{"missing":"Example"}
+
+$ value= jb ~??@prop:/empty_string="missing"/@value
+json(): argument references empty variable: $value from '~??@prop:/empty_string="missing"/@=value'
+
+$ value= jb ~??@prop:/empty_string="missing"/?@value
+{}
+
+$ value= jb ~??@prop:/empty_string="missing"/??@value
+{"missing":"missing"}
+
+$ value= jb ~??@prop:/empty_key="nokey",empty="noval"/?@value
+{"nokey":"noval"}
+
+# Get non-empty = true using the :true type and false default
+$ enabled=1 active= jb @enabled:true/empty=false/ @active:true/empty=false/
+{"enabled":true,"active":false}
+```
