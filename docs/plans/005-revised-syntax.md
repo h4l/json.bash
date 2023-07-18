@@ -47,17 +47,17 @@ attr-value-escape = ( ",," | "]]" )
 
 ### Splat arguments
 
-An argument can use `+` instead of a key to indicate that the value's entries
+An argument can use `...` instead of a key to indicate that the value's entries
 are inserted directly into the host object/array at the argument's position.
 
 ```Console
-$ jb-array :number=42 +:number[:]=1:2:3:4 :number=5
+$ jb-array :number=42 ...:number[:]=1:2:3:4 :number=5
 [42,1,2,3,4,5]
 
-$ jb a=1 +:json='{"b":"1","c":"2"}' d=3
+$ jb a=1 ...:json='{"b":"1","c":"2"}' d=3
 {"a":"1","b":"2","c":"3","d":"4"}
 
-$ jb l4h:json@=<(jb id=u789 name=Lah) +:object{}@=<(
+$ jb l4h:json@=<(jb id=u789 name=Lah) ...:object{}@=<(
 >   username=h4l jb @username:json@=<(jb id=u123 name=Hal)
 >   username=foo jb @username:json@=<(jb id=u456 name=Foo)
 > )
@@ -92,6 +92,15 @@ $ jb counts:number[,]=1,2,3
 
 $ counts= jb @counts:number[,]/empty=[55]/
 {"counts":[55]}
+
+$ # The syntax changes have added constraints on the prefixes inline keys can
+$ # use. The new // syntax makes it simple to specify a key using attributes
+$ jb /key=~??foo/=bar
+{"~??foo":"bar"}
+
+$ # We also allow an optional == to disambiguate flags from the start of the key
+$ jb ==~??foo=bar
+{"~??foo":"bar"}
 ```
 
 ### Missing and empty input flags
@@ -130,51 +139,43 @@ $ noprop= noname= jb @noprop:?/empty=string=🤷/?@=noname
 ## Revised grammar
 
 ```shell
-argument         =  argument-no-attrs | full-argument
-typed-argument   = [ splat | key ] [ type [ metadata ] ] [ value ]
-untyped-argument = ( splat | no-flag-key ) [ metadata ] [ value ]
-splat            = "..."
+argument         = flag-adjacent-key-argument | flag-isolated-key-argument
+flag-isolated-key-argument = [ key ] meta [ value ]
+flag-adjacent-key-argument = [ no-flag-key ] [ value ]
 
-value        = ref-value | inline-value
+value        = [ value-flags ] inline-value
 inline-value = /^=.*/
-ref-value    = "@" inline-value
 
-key          = ref-key | inline-key
-inline-key   = *key-char
-ref-key      = [ splat ] "@" key-char *key-char
-key-char     = /^[^:=@[{\/]/ | key-escape
-key-escape   = ( "::" | "==" | "@@" | "[[" | "{{" | "//" )
+key          = key-flags [ inline-key ]
+inline-key   = key-char *key-char
+key-char     = /^[^:[{\/=]/ | key-escape
+key-escape   = ( "::" | "==" | "[[" | "{{" | "//" )
 
-no-flag-key        = no-flag-ref-key | no-flag-inline-key
-no-flag-inline-key = *key-char non-flag-char
-no-flag-ref-key    = [ splat ] "@" no-flag-inline-key
-key-char           = /^[^:=@[]/ | key-escape
-key-escape         = ( "::" | "==" | "@@" | "[[" )
-non-flag-key-char  = /^[^:=@[{\/!~?]/
+no-flag-key        = [ key-flags ] no-flag-inline-key
+no-flag-inline-key = *key-char non-flag-key-char
+non-flag-key-char  = /^[^:[{\/~?@=]/
 
-key = key-no-flags
-key = key-internal-flags
-key-internal-flags = /.*[^!~?]/
+meta = ( type [ collection-marker ] [ attribute-values ]
+       | collection-marker [ attribute-values ]
+       | attribute-values )
 
-
-metadata         = ( value-flags
-                   | [ key-flags ] collection-attrs [ value-flags ] )
 collection-attrs = ( collection-marker [ attribute-values ] | attribute-values )
 
 type             = ":" [ type-name ]
 type-name        = ( "string" | "number" | "bool" | "true" | "false" | "null"
                      | "raw" | "auto" )
 
-key-flags        = type-flags
-value-flags      = type-flags
-type-flags       = ( required-flag [ error-empty-flag ] [ sub-empty-flag | omit-empty-flag ]
-                     | error-empty-flag [ sub-empty-flag | omit-empty-flag ]
-                     | sub-empty-flag
-                     | omit-empty-flag )
-required-flag    = "!"
+key-flags        = [ splat-flag ] value-flags [ start-of-key ]
+value-flags      = ( error-empty-flag [ sub-empty-flag | omit-empty-flag ] [ ref-flag ]
+                     | sub-empty-flag [ ref-flag ]
+                     | omit-empty-flag [ ref-flag ]
+                     | ref-flag )
+splat-flag       = "..."
 error-empty-flag = "~"
 omit-empty-flag  = "?"
 sub-empty-flag   = "??"
+ref-flag         = "@"
+start-of-key     = "=="
 
 collection-marker = array-marker | object-marker
 array-marker      = "[" [ split-char ] "]"
@@ -183,27 +184,9 @@ split-char        = /./
 
 attribute-values  = "/" [ attr *( "," attr ) ] "/"
 attr              = attr-name [ "=" attr-value ]
-attr-name         = *( /^[^\/,=]/ | attr-name-escape )   # / , = must be escaped
+attr-name         = +( /^[^\/,=]/ | attr-name-escape )   # / , = must be escaped
 attr-value        = *( /^[^\/,]/  | attr-value-escape )  # / ,   must be escaped
 
-attr-name-escape  = ( "==" | ",," | "//" )
+attr-name-escape  = ( "==" | "//" )
 attr-value-escape = ( ",," | "//" )
-
-
 ```
-
-<!--
-
-#argument-no-attrs = ( splat | no-flag-key ) value-flags [ value ]
-no-flag-key       = no-flag-ref-key | no-flag-inline-key
-
-no-flag-inline-key   = *key-char non-flag-char
-no-flag-ref-key      = "@" no-flag-inline-key
-key-char     = /^[^:=@[]/ | key-escape
-key-escape   = ( "::" | "==" | "@@" | "[[" )
-non-flag-char = /[^!~?]/
-
-key = key-no-flags
-key = key-internal-flags
-key-internal-flags = /.*[^!~?]/
- -->
