@@ -147,7 +147,7 @@ flag-isolated-key-argument = [ key ] meta [ value ]
 flag-adjacent-key-argument = [ no-flag-key ] [ value ]
 
 value        = [ value-flags ] inline-value
-inline-value = /^=.*/
+inline-value = /.*/
 
 key          = key-flags [ inline-key ]
 inline-key   = key-char *key-char
@@ -168,8 +168,10 @@ type             = ":" [ type-name ]
 type-name        = ( "string" | "number" | "bool" | "true" | "false" | "null"
                      | "raw" | "auto" )
 
-key-flags        = [ splat-flag ] value-flags [ start-of-key ]
-value-flags      = ( error-empty-flag [ sub-empty-flag | omit-empty-flag ] [ ref-flag ]
+key-flags        = ( splat-flag | [ splat-flag ] flags ) [ start-of-key ]
+key-flags        = [ splat-flag ] flags [ start-of-key ]
+value-flags      =  flags [ start-of-value ]
+flags            = ( error-empty-flag [ sub-empty-flag | omit-empty-flag ] [ ref-flag ]
                      | sub-empty-flag [ ref-flag ]
                      | omit-empty-flag [ ref-flag ]
                      | ref-flag )
@@ -179,6 +181,7 @@ omit-empty-flag  = "?"
 sub-empty-flag   = "??"
 ref-flag         = "@"
 start-of-key     = "=="
+start-of-value   = "="
 
 collection-marker = array-marker | object-marker
 array-marker      = "[" [ split-char ] "]"
