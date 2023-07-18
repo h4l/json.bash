@@ -105,34 +105,37 @@ $ jb ==~??foo=bar
 
 ### Missing and empty input flags
 
-[Imperfect inputs](./imperfect-inputs.md) uses `!` `~` `?` characters as flags
+[Imperfect inputs](./004-imperfect-inputs.md) uses `~` `?` characters as flags
 to set missing/empty input attributes.
 
+We support these by unifying the existing `@` ref marker the new `~?` markers to
+form a series of flags that can modify the attribute or value.
+
 ```Console
-# flags without types/attrs apply to the value
-$ noname= jb @noname:?
+$ # flags on the right-hand side apply to the value
+$ noname= jb @noname?
 {}
 
-$ noname= jb @noname:??
+$ noname= jb @noname??
 {"noname":null}
 
-# To apply only to the key, flags need a type or // to disambiguate
-$ nopro jb @noprop:?//=abc
+$ # flags on the left-hand side apply to the key
+$ noprop= jb ?@noprop=abc
 {}
 
-$ nopro jb @noprop:?string=abc
+$ jb ~?@noprop:string?=abc
 {}
 
-$ noprop= jb @noprop:??//=abc
+$ noprop= jb ??@noprop=abc
 {"":"abc"}
 
-$ noprop= noname= jb @noprop:?//?@=noname
+$ noprop= noname= jb ?@noprop?@=noname
 {}
 
-$ noprop= noname= jb @noprop:?//?@=noname
+$ noprop= noname= jb ??@noprop??@=noname
 {"":null}
 
-$ noprop= noname= jb @noprop:?/empty=string=🤷/?@=noname
+$ noprop= noname= jb ?@noprop/empty_key=string=🤷/@=noname
 {"🤷":"🤷"}
 ```
 
