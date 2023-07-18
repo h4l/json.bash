@@ -151,21 +151,20 @@ inline-value = /.*/
 
 key          = key-flags [ inline-key ]
 inline-key   = key-char *key-char
-key-char     = /^[^:[{\/=]/ | key-escape
-key-escape   = ( "::" | "==" | "[[" | "{{" | "//" )
+key-char     = /^[^:=]/ | key-escape
+key-escape   = ( "::" | "==" )
 
 no-flag-key        = [ key-flags ] no-flag-inline-key
 no-flag-inline-key = *key-char non-flag-key-char
-non-flag-key-char  = /^[^:[{\/~?@=]/
+non-flag-key-char  = /^[^:+~?@=]/
 
-meta = ( type [ collection-marker ] [ attribute-values ]
-       | collection-marker [ attribute-values ]
-       | attribute-values )
+meta = ":" ( [ type ] [ collection-marker ] [ attribute-values ]
+             | collection-marker [ attribute-values ]
+             | attribute-values )
 
 collection-attrs = ( collection-marker [ attribute-values ] | attribute-values )
 
-type             = ":" [ type-name ]
-type-name        = ( "string" | "number" | "bool" | "true" | "false" | "null"
+type             = ( "string" | "number" | "bool" | "true" | "false" | "null"
                      | "raw" | "auto" )
 
 key-flags        = ( splat-flag | [ splat-flag ] flags ) [ start-of-key ]
