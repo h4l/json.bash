@@ -231,6 +231,20 @@ For details of the syntax changes, refer to
 When present, the flag rules implicitly define the following attributes at the
 beginning of the argument's attributes list:
 
+<!--
+TODO: I'm not sure that the order of ? as omit and ?? as sub is what we should
+go with. Omitting seems stronger and more surprising/less clear than sub, so it
+seems like it could be surprising/confusing for omit to be the first and easier
+of the two options.
+
+My thinking for making omit the easier option was that omitting an empty property
+seems safer than introducing a default value, or null. It's generally easier to
+handle a property's absence than having to check for it being a default value.
+
+Probably need to try it in practice to see how each alternative feels to use in
+practice.
+ -->
+
 - `key-flags`:
   - required-flag `+`:
     `no_key=error,empty_key=error,empty_arg_key=error,empty_file_key=error,empty_var_key=error`
