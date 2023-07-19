@@ -146,7 +146,7 @@ argument         = flag-adjacent-key-argument | flag-isolated-key-argument
 flag-isolated-key-argument = [ key ] meta [ value ]
 flag-adjacent-key-argument = [ no-flag-key ] [ value ]
 
-value        = [ value-flags ] inline-value
+value        = value-flags inline-value
 inline-value = /.*/
 
 key          = key-flags [ inline-key ]
@@ -169,7 +169,7 @@ type             = ( "string" | "number" | "bool" | "true" | "false" | "null"
 
 key-flags        = ( splat-flag | [ splat-flag ] flags ) [ start-of-key ]
 key-flags        = [ splat-flag ] flags [ start-of-key ]
-value-flags      =  flags [ start-of-value ]
+value-flags      = ( flags [ start-of-value ] | start-of-value )
 flags            = ( required-flag [ error-empty-flag ] [ sub-empty-flag | omit-empty-flag ] [ ref-flag ]
                      | error-empty-flag [ sub-empty-flag | omit-empty-flag ] [ ref-flag ]
                      | sub-empty-flag [ ref-flag ]
