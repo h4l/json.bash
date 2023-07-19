@@ -29,3 +29,8 @@ or an xargs / find pipeline to dynamically create entries.
 
 This implies an `:object` type would be useful. It would be like `:json` but
 only accept JSON rooted at an object. Similarly, `:array` could be defined.
+
+## Syntax
+
+See [dos/plans/005-revised-syntax.md](./005-revised-syntax.md) for the argument
+grammar that supports this feature.

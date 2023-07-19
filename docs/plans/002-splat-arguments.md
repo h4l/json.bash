@@ -43,3 +43,8 @@ For arrays:
 $ jb-array :number=42 ...:number[:]=1:2:3:4 :number=5
 [42,1,2,3,4,5]
 ```
+
+## Syntax
+
+See [dos/plans/005-revised-syntax.md](./005-revised-syntax.md) for the argument
+grammar that supports this feature.

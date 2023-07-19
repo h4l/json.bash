@@ -12,3 +12,8 @@ $ enabled=1 active= jb @enabled:true/empty=false/ @active:true/empty=false/
 
 Given that non-array/object values wouldn't be splitting the input, the
 split-char shorthand syntax probably doesn't make sense.
+
+## Syntax
+
+See [dos/plans/005-revised-syntax.md](./005-revised-syntax.md) for the argument
+grammar that supports this feature.
