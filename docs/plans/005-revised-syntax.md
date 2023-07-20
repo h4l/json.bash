@@ -149,51 +149,45 @@ change as well.
  -->
 
 ```shell
-argument         = flag-adjacent-key-argument | flag-isolated-key-argument
-flag-isolated-key-argument = [ key ] meta [ value ]
+argument         = [ splat ] ( flag-adjacent-key-argument | flag-isolated-key-argument )
+flag-isolated-key-argument = key meta [ value ]
 flag-adjacent-key-argument = [ no-flag-key ] [ value ]
 
 value        = value-flags inline-value
 inline-value = /.*/
 
-key          = key-flags [ inline-key ]
-inline-key   = key-char *key-char
+key          = [ key-flags ] inline-key
+inline-key   = *key-char
 key-char     = /^[^:=@]/ | key-escape
 key-escape   = ( "::" | "==" | "@@" )
 
-no-flag-key        = key-flags no-flag-inline-key
-no-flag-inline-key = *key-char non-flag-key-char
+no-flag-key        = ( value-prefix [ no-flag-inline-key ] | no-flag-inline-key )
+no-flag-inline-key = inline-key ( non-flag-key-char | EOF )
 non-flag-key-char  = /^[^:+~?@=]/ | key-escape
 
-meta = ":" ( [ type ] [ collection-marker ] [ attribute-values ]
-             | collection-marker [ attribute-values ]
-             | attribute-values )
+meta = ":" CUT ( [ type ] [ collection-marker ] [ attribute-values ]
+                 | collection-marker [ attribute-values ]
+                 | attribute-values )
 
 collection-attrs = ( collection-marker [ attribute-values ] | attribute-values )
 
 type             = ( "string" | "number" | "bool" | "true" | "false" | "null"
                      | "raw" | "auto" )
 
-key-flags        = [ splat-flag ] [ flags ] [ start-of-key ]
-# By being required, the start-of-value acts as a pinning point that ensures the
-# key and meta to its left ar valid. If it was optional, the entire argument
-# could be "parsed" as the arbitrary content following the start-of-value,
-# leading to json() successfully emitting the argument as the JSON value, intend
-# of failing with an invalid argument error.
-value-flags      = ( [ flags ] start-of-value )
+value-prefix     = [ flags ] start-of-value
 flags            = ( required-flag [ error-empty-flag ] [ sub-empty-flag | omit-empty-flag ] [ ref-flag ]
                      | error-empty-flag [ sub-empty-flag | omit-empty-flag ] [ ref-flag ]
                      | sub-empty-flag [ ref-flag ]
                      | omit-empty-flag [ ref-flag ]
                      | ref-flag )
-splat-flag       = "..."
+splat            = "..."
 required-flag    = "+"
 error-empty-flag = "~"
 omit-empty-flag  = "?"
 sub-empty-flag   = "??"
-ref-flag         = "@"
-start-of-key     = "=="
-start-of-value   = ( ref-flag [ "=" ] | "=" )
+start-of-ref     = "@"
+start-of-str     = "="
+start-of-value   = ( start-of-ref | start-of-str )
 
 collection-marker = array-marker | object-marker
 array-marker      = "[" [ split-char ] "]"
@@ -207,4 +201,8 @@ attr-value        = *( /^[^\/,]/  | attr-value-escape )  # / ,   must be escaped
 
 attr-name-escape  = ( "==" | "//" )
 attr-value-escape = ( ",," | "//" )
+
+EOF = # end of input
+CUT = # match without consuming input, but causes match failure when
+      # backtracking after matching
 ```
