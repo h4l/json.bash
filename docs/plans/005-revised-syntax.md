@@ -141,6 +141,13 @@ $ noprop= noname= jb ?@noprop/empty_key=string=🤷/@=noname
 
 ## Revised grammar
 
+<!--
+TODO: make security note about how `={user_input}` is vulnerable to the user
+adding a = at the start, e.g. =foo@/stolen/file
+Need to use `:=` prefix to prevent this. This was the case before this grammar
+change as well.
+ -->
+
 ```shell
 argument         = flag-adjacent-key-argument | flag-isolated-key-argument
 flag-isolated-key-argument = [ key ] meta [ value ]
@@ -151,12 +158,12 @@ inline-value = /.*/
 
 key          = key-flags [ inline-key ]
 inline-key   = key-char *key-char
-key-char     = /^[^:=]/ | key-escape
-key-escape   = ( "::" | "==" )
+key-char     = /^[^:=@]/ | key-escape
+key-escape   = ( "::" | "==" | "@@" )
 
-no-flag-key        = [ key-flags ] no-flag-inline-key
+no-flag-key        = key-flags no-flag-inline-key
 no-flag-inline-key = *key-char non-flag-key-char
-non-flag-key-char  = /^[^:+~?@=]/
+non-flag-key-char  = /^[^:+~?@=]/ | key-escape
 
 meta = ":" ( [ type ] [ collection-marker ] [ attribute-values ]
              | collection-marker [ attribute-values ]
@@ -167,9 +174,13 @@ collection-attrs = ( collection-marker [ attribute-values ] | attribute-values )
 type             = ( "string" | "number" | "bool" | "true" | "false" | "null"
                      | "raw" | "auto" )
 
-key-flags        = ( splat-flag | [ splat-flag ] flags ) [ start-of-key ]
-key-flags        = [ splat-flag ] flags [ start-of-key ]
-value-flags      = ( flags [ start-of-value ] | start-of-value )
+key-flags        = [ splat-flag ] [ flags ] [ start-of-key ]
+# By being required, the start-of-value acts as a pinning point that ensures the
+# key and meta to its left ar valid. If it was optional, the entire argument
+# could be "parsed" as the arbitrary content following the start-of-value,
+# leading to json() successfully emitting the argument as the JSON value, intend
+# of failing with an invalid argument error.
+value-flags      = ( [ flags ] start-of-value )
 flags            = ( required-flag [ error-empty-flag ] [ sub-empty-flag | omit-empty-flag ] [ ref-flag ]
                      | error-empty-flag [ sub-empty-flag | omit-empty-flag ] [ ref-flag ]
                      | sub-empty-flag [ ref-flag ]
@@ -182,7 +193,7 @@ omit-empty-flag  = "?"
 sub-empty-flag   = "??"
 ref-flag         = "@"
 start-of-key     = "=="
-start-of-value   = "="
+start-of-value   = ( ref-flag [ "=" ] | "=" )
 
 collection-marker = array-marker | object-marker
 array-marker      = "[" [ split-char ] "]"
