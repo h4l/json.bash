@@ -768,6 +768,74 @@ function get_array_encode_examples() {
        <(printf '{"formatted":[{\n}\n\n,[\n]\n\n,"hi"\n\n]}\n')
 }
 
+
+@test "json argument pattern 005 :: non-matches" {
+  # # A ref key can't be empty, otherwise it would clash with the @=value syntax.
+  # # Also, an empty ref is not useful in practice.
+  # [[ ! '@' =~ $_json_bash_arg_pattern ]]
+  # [[ ! '@:string' =~ $_json_bash_arg_pattern ]]
+  false
+}
+
+@test "json argument pattern 005 :: matches" {
+  possible_key_flags=('' '@' '?@' '?' '...' '...?')
+  keys=('' 'key')
+  types=('' 'string')
+  collections=('' '[]' '[,]' '{}' '{,}')
+  possible_attributes=('' '//' '/not=parsed,yet/' '/not=parsed,yet=esc//ape/')
+  possible_value_flags=('' '?' '=' '@' '@=')
+  values=('' 'value')
+
+  for key_flags in "${possible_key_flags[@]}"; do
+  for key in "${keys[@]}"; do
+  for type in "${types[@]}"; do
+  for collection in "${collections[@]}"; do
+  for attributes in "${possible_attributes[@]}"; do
+  for value_flags in "${possible_value_flags[@]}"; do
+  for value in "${values[@]}"; do
+    meta="${type?}${collection?}${attributes?}"
+    meta_separator=''
+    if [[ $meta ]]; then meta_separator=':'; fi
+
+    # values must be preceded by at least one flag, such as =
+    if [[ $value_flags == '' && $value ]]; then continue; fi
+
+    example="${key_flags?}${key?}${meta_separator?}${type?}${collection?}${attributes?}${value_flags?}${value?}"
+    declare -p key_flags key type meta_separator type collection attributes value_flags value example
+    [[ $example =~ $_json_bash_005_argument ]]
+    declare -p BASH_REMATCH
+
+    # TODO: conditional group match based on whether meta is present
+
+    local -n matched_key_flags=BASH_REMATCH[2] \
+      matched_key=BASH_REMATCH[3] \
+      matched_type=BASH_REMATCH[17] \
+      matched_collection=BASH_REMATCH[17] \
+      matched_attributes=BASH_REMATCH[17] \
+      matched_value_flags=BASH_REMATCH[18]
+    local matched_length=${#BASH_REMATCH[0]}
+    local matched_value="${example:${matched_length:?}}"
+    declare -p matched_key matched_type matched_collection matched_attributes matched_value_flags matched_value
+
+    # A standalone value without a = will get matched by the key group
+    if [[ ${example?} == "${value_flags?}${value?}" ]]; then
+      [[ ( ${matched_key_flags?} == "${value_flags?}" && ${matched_key?} == "${value?}" ) \
+      || ( ${matched_value_flags?} == "${value_flags?}" && ${matched_value?} == "${value?}" ) ]]
+    else
+      [[ ${matched_key_flags?} == "${value_flags?}" ]]
+      [[ ${matched_key?} == "${value?}" ]]
+      [[ ${matched_type?} == "${type?}" ]]
+      [[ ${matched_collection?} == "${collection?}" ]]
+      [[ ${matched_attributes?} == "${attributes?}" ]]
+      [[ ${matched_value_flags?} == "${value_flags?}" ]]
+      [[ ${matched_value?} == "${value?}" ]]
+    fi
+
+
+  done done done done done done done
+}
+
+
 @test "json argument pattern :: non-matches" {
   # A ref key can't be empty, otherwise it would clash with the @=value syntax.
   # Also, an empty ref is not useful in practice.

@@ -86,6 +86,50 @@ function simple_argument() {
   "
 }
 
+# The argument syntax from plans/005-revised-syntax.md
+function argument_005() {
+  key_flags=" \.{3}? \+? ~? \?{0,2} @? ={2}? "
+  value_flags="
+    \+ ~? \?{0,2} @? =?
+  | ~ \?{0,2} @? =?
+  | \?{1,2} @? =?
+  | @ =?
+  | =
+  "
+
+  key_escape=' ( :: | == | @@ ) ' # only need to group this if it helps the decoder
+  key_char=" ${key_escape:?} | [^:=@] "
+  inline_key=" ( ${key_char:?} )* "
+  key=" ( ${key_flags:?} ) ( ${inline_key:?} ) "
+
+  non_flag_key_char=" ${key_escape:?} | [^:+~?@=] "
+  no_flag_key=" ( ${key_flags:?} ) ( ${inline_key:?} ( $ | ${non_flag_key_char:?} ) ) "
+
+  value=" ${value_flags:?} "
+
+  type_name=' auto | bool | false | json | null | number | raw | string | true '
+  collection_marker=' \[.?\] | \{.?\} '
+  # The attributes without matching the individual entries. Anything except /,
+  # but / can be escaped with //. We capture ,, and == escapes so that we can
+  # detect if no escapes are present and skip decoding escapes if so.
+  attributes=$' / ( ( // | ,, | == ) | [^/] )* / '
+
+  meta=" : ( ${type_name:?} )? ( ${collection_marker:?} )? ( ${attributes} )? "
+
+
+  # [ no_flag_key | [ key ]  meta ] [ value ]
+  argument="
+    ^ ( ${no_flag_key} | ( ${key:?} )? ${meta?} )? ( ${value_flags:?} | $ )
+  "
+
+  # DEBUG
+  # TODO: try custom mini versino of arg without meta
+  format_regex_var _json_bash_005_no_flag_key "${no_flag_key:?}"
+  # format_regex_var _json_bash_005_dbg "^ ( ${no_flag_key} ) ( ${value_flags:?} | $ )"
+
+  format_regex_var _json_bash_005_argument "${argument:?}"
+}
+
 function bash_quote() {
   local quoted
   # Force bash to use $'...' syntax by including a non-printable character.
@@ -105,7 +149,8 @@ function format_regex_var() {
 
 # Generate the final pattern used in json.bash (run this script and manually
 # insert this output, it doesn't change often.)
-format_regex_var __attributes "${attributes:?}"
+argument_005
+# format_regex_var _json_bash_005_argument "$(argument_005)"
 format_regex_var _json_bash_arg_pattern "${argument:?}"
 format_regex_var _json_bash_simple_arg_pattern "$(simple_argument)"
 format_regex_var _json_bash_type_name_pattern "^ ${type_name:?} $"
