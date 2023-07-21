@@ -1,4 +1,4 @@
-w#!/usr/bin/env bash
+#!/usr/bin/env bash
 shopt -s extglob # required to match our auto glob patterns
 
 JSON_BASH_VERSION=0.1.0
@@ -18,7 +18,10 @@ function json.is_compatible() {
 }
 
 # Generated in hack/argument_pattern.bash
-_json_bash_005_argument=$'^((\\.{3}?\\+?~?\\?{0,2}@?={2}?)(((::|==|@@)|[^:=@])*((::|==|@@)|[^:+~?@=]|$))|((\\.{3}?\\+?~?\\?{0,2}@?={2}?)(((::|==|@@)|[^:=@])*))?:(auto|bool|false|json|null|number|raw|string|true)?(\\[.?\\]|\\{.?\\})?(/((//|,,|==)|[^/])*/)?)?(\\+~?\\?{0,2}@?=?|~\\?{0,2}@?=?|\\?{1,2}@?=?|@=?|=|$)'
+_json_bash_005_p1_key=$'^(\\.*)(($|:)|(([+~?]*[@=])|([^.@=:]))(((::|==|@@)|[^:=@])*))'
+_json_bash_005_p2_meta=$'^:([a-zA-Z0-9]+)?(\\[.?\\]|\\{.?\\})?(/((//|,,|==)|[^/])*/)?'
+_json_bash_005_p3_value=$'^[+~?]*[@=]?'
+_json_bash_005_argument=$'^((\\.{3}?\\+?~?\\?{0,2}[@=]?)(((::|==|@@)|[^:=@])*((::|==|@@)|[^:+~?@=]))?|((\\.{3}?\\+?~?\\?{0,2}[@=]?)(((::|==|@@)|[^:=@])*))?:(auto|bool|false|json|null|number|raw|string|true)?(\\[.?\\]|\\{.?\\})?(/((//|,,|==)|[^/])*/)?)?(\\+~?\\?{0,2}@?=?|~\\?{0,2}@?=?|\\?{1,2}@?=?|[@=]|$)'
 _json_bash_arg_pattern=$'^((@(::|==|@@|\\[\\[|[^:=[@]))?((::|==|@@|\\[\\[)|[^:=[@])*)?(:(auto|bool|false|json|null|number|raw|string|true))?(\\[((\\]\\]|,,|==)|[^]])*\\])?(@?=|$)'
 _json_bash_simple_arg_pattern=$'^((@[^:=[@]+)|([^:=[@]+))?(:(auto|bool|false|json|null|number|raw|string|true))?((\\[([^]:=[@,])?\\]))?((@?=)([^=].?|$)|$)'
 _json_bash_type_name_pattern=$'^(auto|bool|false|json|null|number|raw|string|true)$'

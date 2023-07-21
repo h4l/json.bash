@@ -768,73 +768,176 @@ function get_array_encode_examples() {
        <(printf '{"formatted":[{\n}\n\n,[\n]\n\n,"hi"\n\n]}\n')
 }
 
+function assert_005_p1_match() {
+  : ${arg?} ${splat?} ${flags?} ${value?} ${next?}
 
-@test "json argument pattern 005 :: non-matches" {
-  # # A ref key can't be empty, otherwise it would clash with the @=value syntax.
-  # # Also, an empty ref is not useful in practice.
-  # [[ ! '@' =~ $_json_bash_arg_pattern ]]
-  # [[ ! '@:string' =~ $_json_bash_arg_pattern ]]
-  false
-}
+  [[ ${arg?} =~ $_json_bash_005_p1_key ]]
+  local matched_splat=${BASH_REMATCH[1]} \
+           matched_immediate_meta=${BASH_REMATCH[3]} \
+           matched_key_flags=${BASH_REMATCH[4]} \
+           matched_key_value=${BASH_REMATCH[5]}
+  matched_next=${matched_immediate_meta?}${arg:${#BASH_REMATCH[0]}}
 
-@test "json argument pattern 005 :: matches" {
-  possible_key_flags=('' '@' '?@' '?' '...' '...?')
-  keys=('' 'key')
-  types=('' 'string')
-  collections=('' '[]' '[,]' '{}' '{,}')
-  possible_attributes=('' '//' '/not=parsed,yet/' '/not=parsed,yet=esc//ape/')
-  possible_value_flags=('' '?' '=' '@' '@=')
-  values=('' 'value')
+  # Move =/@ prefix to flags
+  if [[ "${matched_key_value?}" == ['=@']* ]]; then
+    matched_key_flags="${matched_key_flags?}${matched_key_value:0:1}"
+    matched_key_value=${matched_key_value:1}
+  fi
 
-  for key_flags in "${possible_key_flags[@]}"; do
-  for key in "${keys[@]}"; do
-  for type in "${types[@]}"; do
-  for collection in "${collections[@]}"; do
-  for attributes in "${possible_attributes[@]}"; do
-  for value_flags in "${possible_value_flags[@]}"; do
-  for value in "${values[@]}"; do
-    meta="${type?}${collection?}${attributes?}"
-    meta_separator=''
-    if [[ $meta ]]; then meta_separator=':'; fi
-
-    # values must be preceded by at least one flag, such as =
-    if [[ $value_flags == '' && $value ]]; then continue; fi
-
-    example="${key_flags?}${key?}${meta_separator?}${type?}${collection?}${attributes?}${value_flags?}${value?}"
-    declare -p key_flags key type meta_separator type collection attributes value_flags value example
-    [[ $example =~ $_json_bash_005_argument ]]
+  diff -u <(printf '%s\n' "splat=${splat@Q}" "flags=${flags@Q}" \
+                 "value=${value@Q}" "next=${next@Q}") \
+          <(printf '%s\n' "splat=${matched_splat@Q}" "flags=${matched_key_flags@Q}" \
+                          "value=${matched_key_value@Q}" "next=${matched_next@Q}") || {
     declare -p BASH_REMATCH
-
-    # TODO: conditional group match based on whether meta is present
-
-    local -n matched_key_flags=BASH_REMATCH[2] \
-      matched_key=BASH_REMATCH[3] \
-      matched_type=BASH_REMATCH[17] \
-      matched_collection=BASH_REMATCH[17] \
-      matched_attributes=BASH_REMATCH[17] \
-      matched_value_flags=BASH_REMATCH[18]
-    local matched_length=${#BASH_REMATCH[0]}
-    local matched_value="${example:${matched_length:?}}"
-    declare -p matched_key matched_type matched_collection matched_attributes matched_value_flags matched_value
-
-    # A standalone value without a = will get matched by the key group
-    if [[ ${example?} == "${value_flags?}${value?}" ]]; then
-      [[ ( ${matched_key_flags?} == "${value_flags?}" && ${matched_key?} == "${value?}" ) \
-      || ( ${matched_value_flags?} == "${value_flags?}" && ${matched_value?} == "${value?}" ) ]]
-    else
-      [[ ${matched_key_flags?} == "${value_flags?}" ]]
-      [[ ${matched_key?} == "${value?}" ]]
-      [[ ${matched_type?} == "${type?}" ]]
-      [[ ${matched_collection?} == "${collection?}" ]]
-      [[ ${matched_attributes?} == "${attributes?}" ]]
-      [[ ${matched_value_flags?} == "${value_flags?}" ]]
-      [[ ${matched_value?} == "${value?}" ]]
-    fi
-
-
-  done done done done done done done
+    return 1
+  }
 }
 
+@test "json argument pattern 005 :: p1_key" {
+  arg='' splat='' flags='' value='' next='' assert_005_p1_match
+  arg=':string' splat='' flags='' value='' next=':string' assert_005_p1_match
+  # Splat should be 3 '.' , but we want the match to always succeed so that we
+  # have something to work with when reporting syntax errors.
+  arg='.' splat='.' flags='' value='' next='' assert_005_p1_match
+  arg='...' splat='...' flags='' value='' next='' assert_005_p1_match
+  arg='.:' splat='.' flags='' value='' next=':' assert_005_p1_match
+  arg='...:' splat='...' flags='' value='' next=':' assert_005_p1_match
+  arg='....:' splat='....' flags='' value='' next=':' assert_005_p1_match
+
+  # = escapes
+  arg='=' splat='' flags='=' value='' next='' assert_005_p1_match
+  arg='...=' splat='...' flags='=' value='' next='' assert_005_p1_match
+  arg='==' splat='' flags='=' value='' next='=' assert_005_p1_match
+  arg='...==' splat='...' flags='=' value='' next='=' assert_005_p1_match
+  arg='===' splat='' flags='=' value='==' next='' assert_005_p1_match
+  arg='====' splat='' flags='=' value='==' next='=' assert_005_p1_match
+  arg='=====' splat='' flags='=' value='====' next='' assert_005_p1_match
+
+  # : escapes
+  arg='=::' splat='' flags='=' value='::' next='' assert_005_p1_match
+  arg='=:::' splat='' flags='=' value='::' next=':' assert_005_p1_match
+  arg='=::::' splat='' flags='=' value='::::' next='' assert_005_p1_match
+  arg='@::' splat='' flags='@' value='::' next='' assert_005_p1_match
+  arg='@:::' splat='' flags='@' value='::' next=':' assert_005_p1_match
+  arg='@::::' splat='' flags='@' value='::::' next='' assert_005_p1_match
+  arg='x::' splat='' flags='' value='x::' next='' assert_005_p1_match
+  arg='x:::' splat='' flags='' value='x::' next=':' assert_005_p1_match
+  arg='x::::' splat='' flags='' value='x::::' next='' assert_005_p1_match
+  arg='~:' splat='' flags='~' value='' next=':' assert_005_p1_match
+  arg='~::' splat='' flags='~' value='' next='::' assert_005_p1_match
+  arg='~:::' splat='' flags='~' value='' next=':::' assert_005_p1_match
+
+  arg='@' splat='' flags='@' value='' next='' assert_005_p1_match
+  arg='...@' splat='...' flags='@' value='' next='' assert_005_p1_match
+  arg='@@' splat='' flags='@' value='' next='@' assert_005_p1_match
+  arg='...@@' splat='...' flags='@' value='' next='@' assert_005_p1_match
+  arg='@@@' splat='' flags='@' value='@@' next='' assert_005_p1_match
+  arg='@@@@' splat='' flags='@' value='@@' next='@' assert_005_p1_match
+  arg='@@@@@' splat='' flags='@' value='@@@@' next='' assert_005_p1_match
+
+  arg='~' splat='' flags='~' value='' next='' assert_005_p1_match
+  arg='~?+' splat='' flags='~?+' value='' next='' assert_005_p1_match
+  arg='~?+' splat='' flags='~?+' value='' next='' assert_005_p1_match
+  arg='~=' splat='' flags='~=' value='' next='' assert_005_p1_match
+  arg='~=:' splat='' flags='~=' value='' next=':' assert_005_p1_match
+  arg='~@' splat='' flags='~@' value='' next='' assert_005_p1_match
+  arg='~???+++~@' splat='' flags='~???+++~@' value='' next='' assert_005_p1_match
+  arg='...~???+++~@' splat='...' flags='~???+++~@' value='' next='' assert_005_p1_match
+
+  arg='foo' splat='' flags='' value='foo' next='' assert_005_p1_match
+  arg='=foo' splat='' flags='=' value='foo' next='' assert_005_p1_match
+  arg='@foo' splat='' flags='@' value='foo' next='' assert_005_p1_match
+  arg='foo:' splat='' flags='' value='foo' next=':' assert_005_p1_match
+  arg='foo=' splat='' flags='' value='foo' next='=' assert_005_p1_match
+  arg='~foo=' splat='' flags='~' value='foo' next='=' assert_005_p1_match
+  arg='~=foo=' splat='' flags='~=' value='foo' next='=' assert_005_p1_match
+  arg='~@foo=' splat='' flags='~@' value='foo' next='=' assert_005_p1_match
+}
+
+
+function assert_005_p2_match() {
+  if [[ ${match:-} == false ]]; then
+    [[ ! ${arg?} =~ $_json_bash_005_p2_meta ]]
+    return
+  fi
+  : ${arg?} ${type?} ${col?} ${attrs?} ${next?}
+
+  [[ ${arg?} =~ $_json_bash_005_p2_meta ]]
+  local -n matched_type=BASH_REMATCH[1] \
+           matched_col=BASH_REMATCH[2] \
+           matched_attrs=BASH_REMATCH[3]
+  matched_next=${arg:${#BASH_REMATCH[0]}}
+
+  diff -u <(printf '%s\n' "type=${type@Q}" "collection=${col@Q}" \
+                          "attributes=${attrs@Q}" "next=${next@Q}") \
+          <(printf '%s\n' "type=${matched_type@Q}" "collection=${matched_col@Q}" \
+                          "attributes=${matched_attrs@Q}" "next=${matched_next@Q}") || {
+    declare -p BASH_REMATCH
+    return 1
+  }
+}
+
+@test "json argument pattern 005 :: p2_meta" {
+  arg=':' type='' col='' attrs='' next='' assert_005_p2_match
+  arg=':string' type='string' col='' attrs='' next='' assert_005_p2_match
+  arg=':String' type='String' col='' attrs='' next='' assert_005_p2_match
+  arg=':str8n' type='str8n' col='' attrs='' next='' assert_005_p2_match
+  arg=':[]' type='' col='[]' attrs='' next='' assert_005_p2_match
+  arg=':[,]' type='' col='[,]' attrs='' next='' assert_005_p2_match
+  arg=':{}' type='' col='{}' attrs='' next='' assert_005_p2_match
+  arg=':{,}' type='' col='{,}' attrs='' next='' assert_005_p2_match
+  arg='://' type='' col='' attrs='//' next='' assert_005_p2_match
+  arg=':/abc/' type='' col='' attrs='/abc/' next='' assert_005_p2_match
+
+  arg=':foo[/]/abc/' type='foo' col='[/]' attrs='/abc/' next='' assert_005_p2_match
+  arg=':foo[]]/abc/' type='foo' col='[]]' attrs='/abc/' next='' assert_005_p2_match
+  arg=':foo{/}/abc/' type='foo' col='{/}' attrs='/abc/' next='' assert_005_p2_match
+  arg=':foo{}}/abc/' type='foo' col='{}}' attrs='/abc/' next='' assert_005_p2_match
+
+  arg=':=abc' type='' col='' attrs=''  next='=abc' assert_005_p2_match
+  arg=':foo[]/abc/=abc' type='foo' col='[]' attrs='/abc/'  next='=abc' assert_005_p2_match
+
+  arg='' match=false assert_005_p2_match
+  arg=' :string' match=false assert_005_p2_match
+  arg='foo' match=false assert_005_p2_match
+  arg='=blah' match=false assert_005_p2_match
+  arg=':]]' type='' col='' attrs='' next=']]' assert_005_p2_match
+  arg=':}}' type='' col='' attrs='' next='}}' assert_005_p2_match
+  arg=':/foo/[]' type='' col='' attrs='/foo/' next='[]' assert_005_p2_match
+  arg=':/foo/{}' type='' col='' attrs='/foo/' next='{}' assert_005_p2_match
+}
+
+function assert_005_p3_match() {
+  if [[ ${match:-} == false ]]; then
+    [[ ! ${arg?} =~ $_json_bash_005_p3_value ]]
+    return
+  fi
+  : ${arg?} ${flags?} ${next?}
+
+  [[ ${arg?} =~ $_json_bash_005_p3_value ]]
+  local -n matched_flags=BASH_REMATCH[0]
+  matched_next=${arg:${#BASH_REMATCH[0]}}
+
+  declare -p BASH_REMATCH
+  diff -u <(printf '%s\n' "flags=${flags@Q}" "next=${next@Q}") \
+          <(printf '%s\n' "flags=${matched_flags@Q}" "next=${matched_next@Q}") || {
+    declare -p BASH_REMATCH
+    return 1
+  }
+}
+
+@test "json argument pattern 005 :: p3_value" {
+  arg='' flags='' next='' assert_005_p3_match
+  arg='blah' flags='' next='blah' assert_005_p3_match
+  arg='??' flags='??' next='' assert_005_p3_match
+  arg='??sdfs' flags='??' next='sdfs' assert_005_p3_match
+  arg='=' flags='=' next='' assert_005_p3_match
+  arg='@' flags='@' next='' assert_005_p3_match
+  arg='=foo' flags='=' next='foo' assert_005_p3_match
+  arg='@foo' flags='@' next='foo' assert_005_p3_match
+  arg='?+~=foo' flags='?+~=' next='foo' assert_005_p3_match
+  arg='?+~@foo' flags='?+~@' next='foo' assert_005_p3_match
+}
 
 @test "json argument pattern :: non-matches" {
   # A ref key can't be empty, otherwise it would clash with the @=value syntax.
