@@ -150,24 +150,35 @@ change as well.
 
 ```shell
 argument         = [ splat ] ( flag-adjacent-key-argument | flag-isolated-key-argument )
-flag-isolated-key-argument = key meta [ value ]
+flag-isolated-key-argument = [ key ] meta [ value ]
 flag-adjacent-key-argument = [ no-flag-key ] [ value ]
 
 value        = value-flags inline-value
 inline-value = /.*/
 
-key          = [ key-flags ] inline-key
-inline-key   = *key-char
-key-char     = /^[^:=@]/ | key-escape
-key-escape   = ( "::" | "==" | "@@" )
+key                   = key-prefix inline-key
+key-prefix            = value-prefix | unambiguous-key-start
+# Don't allow double escape sequences at the start of an unprefixed key, as
+# they're ambiguous. e.g consider whether '==foo' is "=foo":"" or "":"foo".
+# With this rule it's "":"foo". '===foo' is needed for "=foo":""
+unambiguous-key-start = [^@=:]
+inline-key            = *key-char
+key-char              = /^[^:=@]/ | key-escape
+key-escape            = ( "::" | "==" | "@@" )
 
-no-flag-key        = ( value-prefix [ no-flag-inline-key ] | no-flag-inline-key )
-no-flag-inline-key = inline-key ( non-flag-key-char | EOF )
-non-flag-key-char  = /^[^:+~?@=]/ | key-escape
+no-flag-key           = ( value-prefix [ no-flag-inline-key ]
+                        | unambiguous-key-start no-flag-inline-key
+                        | unambiguous-single-char-no-flag-key )
+no-flag-inline-key    = inline-key ( non-flag-key-char | EOF )
+non-flag-key-char     = /^[^:+~?@=]/ | key-escape
+
+# A single char that can't be confused with =@ to start a key, or +~? flags of
+# the following value.
+unambiguous-single-char-no-flag-key = [^@=:+~?]
 
 meta = ":" CUT ( [ type ] [ collection-marker ] [ attribute-values ]
                  | collection-marker [ attribute-values ]
-                 | attribute-values )
+                 | attribute-values ) CUT
 
 collection-attrs = ( collection-marker [ attribute-values ] | attribute-values )
 
