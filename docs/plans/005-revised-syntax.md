@@ -150,31 +150,29 @@ change as well.
 
 ```shell
 argument         = [ splat ] ( flag-adjacent-key-argument | flag-isolated-key-argument )
-flag-isolated-key-argument = [ key ] meta [ value ]
-flag-adjacent-key-argument = [ no-flag-key ] [ value ]
+flag-isolated-key-argument = key meta [ value ]
+flag-adjacent-key-argument = no-flag-key [ value ]
 
-value        = ( value-flags inline-value | flags )
+value        = ( value-prefix inline-value | flags )
 inline-value = /.*/
 
-key                   = key-prefix inline-key
-key-prefix            = value-prefix | unambiguous-key-start
-# Don't allow double escape sequences at the start of an unprefixed key, as
-# they're ambiguous. e.g consider whether '==foo' is "=foo":"" or "":"foo".
-# With this rule it's "":"foo". '===foo' is needed for "=foo":""
-unambiguous-key-start = [^@=:]
-inline-key            = *key-char
-key-char              = /^[^:=@]/ | key-escape
-key-escape            = ( "::" | "==" | "@@" )
+key                = [ flags ] [ start-of-key inline-key ]
+# Don't allow double escape sequences at the start of a bare key (not prefixed
+# with = or @) as they're ambiguous. e.g consider whether '==foo' is "=foo":""
+# or "":"foo". With this rule it's "":"foo". '===foo' is needed for "=foo":""
+inline-key         = *key-char
+key-char           = /^[^:=@]/ | key-escape
+key-escape         = ( "::" | "==" | "@@" )
 
-no-flag-key           = ( value-prefix [ no-flag-inline-key ]
-                        | unambiguous-key-start no-flag-inline-key
-                        | unambiguous-single-char-no-flag-key )
-no-flag-inline-key    = inline-key ( non-flag-key-char | EOF )
-non-flag-key-char     = /^[^:+~?@=]/ | key-escape
+no-flag-key        = [ flags ] [ start-of-key no-flag-inline-key
+                                 | not-splat-flag-or-start-char ]
+no-flag-inline-key = inline-key ( non-flag-key-char | EOF )
+non-flag-key-char  = not-flag-or-start-char | key-escape
 
-# A single char that can't be confused with =@ to start a key, or +~? flags of
-# the following value.
-unambiguous-single-char-no-flag-key = [^@=:+~?]
+# A single char that can't be confused with =@: to start a key/value or meta; or
+# +~? flags of the following value.
+not-flag-or-start-char       = /^[^+~?=@:]/
+not-splat-flag-or-start-char = /^[^+~?=@:.]/  # also exclude . from splat
 
 meta = ":" CUT ( [ type ] [ collection-marker ] [ attribute-values ]
                  | collection-marker [ attribute-values ]
@@ -195,6 +193,7 @@ omit-empty-flag  = "?"
 sub-empty-flag   = "??"
 start-of-ref     = "@"
 start-of-str     = "="
+start-of-key     = ( start-of-value | not-splat-flag-or-start-char )
 start-of-value   = ( start-of-ref | start-of-str )
 
 collection-marker = array-marker | object-marker
