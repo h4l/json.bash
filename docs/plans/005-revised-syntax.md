@@ -153,7 +153,7 @@ argument         = [ splat ] ( flag-adjacent-key-argument | flag-isolated-key-ar
 flag-isolated-key-argument = [ key ] meta [ value ]
 flag-adjacent-key-argument = [ no-flag-key ] [ value ]
 
-value        = value-flags inline-value
+value        = ( value-flags inline-value | flags )
 inline-value = /.*/
 
 key                   = key-prefix inline-key
