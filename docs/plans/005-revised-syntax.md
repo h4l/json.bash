@@ -186,11 +186,8 @@ type             = ( "string" | "number" | "bool" | "true" | "false" | "null"
                      | "raw" | "auto" )
 
 value-prefix     = [ flags ] start-of-value
-flags            = ( required-flag [ error-empty-flag ] [ sub-empty-flag | omit-empty-flag ] [ ref-flag ]
-                     | error-empty-flag [ sub-empty-flag | omit-empty-flag ] [ ref-flag ]
-                     | sub-empty-flag [ ref-flag ]
-                     | omit-empty-flag [ ref-flag ]
-                     | ref-flag )
+flags            = any-flag any-flag*
+any-flag         = ( required-flag | error-empty-flag | sub-empty-flag | omit-empty-flag )
 splat            = "..."
 required-flag    = "+"
 error-empty-flag = "~"
