@@ -18,9 +18,9 @@ function json.is_compatible() {
 }
 
 # Generated in hack/argument_pattern.bash
-_json_bash_005_p1_key=$'^(\\.*)(($|:)|(([+~?]*[@=])|([^.@=:]))(((::|==|@@)|[^:=@])*))'
+_json_bash_005_p1_key=$'^(\\.*)(($|:)|([+~?]*)([^.+~?:]((::|==|@@)|[^:=@])*)?)'
 _json_bash_005_p2_meta=$'^:([a-zA-Z0-9]+)?(\\[.?\\]|\\{.?\\})?(/((//|,,|==)|[^/])*/)?'
-_json_bash_005_p3_value=$'^[+~?]*[@=]?'
+_json_bash_005_p3_value=$'^([+~?]*)([@=]?)'
 _json_bash_005_argument=$'^((\\.{3}?\\+?~?\\?{0,2}[@=]?)(((::|==|@@)|[^:=@])*((::|==|@@)|[^:+~?@=]))?|((\\.{3}?\\+?~?\\?{0,2}[@=]?)(((::|==|@@)|[^:=@])*))?:(auto|bool|false|json|null|number|raw|string|true)?(\\[.?\\]|\\{.?\\})?(/((//|,,|==)|[^/])*/)?)?(\\+~?\\?{0,2}@?=?|~\\?{0,2}@?=?|\\?{1,2}@?=?|[@=]|$)'
 _json_bash_arg_pattern=$'^((@(::|==|@@|\\[\\[|[^:=[@]))?((::|==|@@|\\[\\[)|[^:=[@])*)?(:(auto|bool|false|json|null|number|raw|string|true))?(\\[((\\]\\]|,,|==)|[^]])*\\])?(@?=|$)'
 _json_bash_simple_arg_pattern=$'^((@[^:=[@]+)|([^:=[@]+))?(:(auto|bool|false|json|null|number|raw|string|true))?((\\[([^]:=[@,])?\\]))?((@?=)([^=].?|$)|$)'
@@ -475,6 +475,125 @@ function json._error() {
   # We always want to write to $_caller_out because $out may be a temp buffer
   # which is discarded on error.
   out=${_caller_out?} json.signal_error "${@}"
+}
+
+function json._parse_argument2() {
+  local -n _jpa_out=${out:?"\$out must name an Associative Array to hold parsed attributes"}
+  # Parsing an argument results in a set of name=value attributes. The argument
+  # syntax (other than the [name=value,...] section) is all shorthand for
+  # attributes which could be manually specified using attributes.
+  # The key pattern is intended to always match, even invalid/empty inputs.
+  [[ ${1?} =~ $_json_bash_005_p1_key ]] \
+    || { echo "json.parse_argument(): failed to parse argument: ${1@Q}" >&2; return 1; }
+
+  case "${BASH_REMATCH[1]}" in  # splat
+  (...) _jpa_out['splat']=true;;
+  (?*)  echo "json.parse_argument(""): splat operator must be '...'" >&2; return 1;;
+  esac
+
+  local key_prefix=${BASH_REMATCH[5]:0:1} key_value=${BASH_REMATCH[5]:1}
+  key_value=${key_value//@@/@}
+  key_value=${key_value//::/:}
+  key_value=${key_value//==/=}
+
+  case "${BASH_REMATCH[4]}" in  # key flags
+  (*'+'*)  _jpa_out['key_flag_strict']='+' ;;&
+  (*'~'*)  _jpa_out['key_flag_no']='~'     ;;&
+  (*'?'*)  _jpa_out['key_flag_empty']='?'  ;;&
+  (*'??'*) _jpa_out['key_flag_empty']='??' ;;&
+  esac
+
+  case "${key_prefix?}${key_value:0:2}" in
+  ('@/'*|'@./') _jpa_out['key']=${key_value?} _jpa_out['@key']='file' ;;
+  ('@'*)        _jpa_out['key']=${key_value?} _jpa_out['@key']='var'  ;;
+  ('='*)        _jpa_out['key']=${key_value?} _jpa_out['@key']='str'  ;;
+  (?*)          _jpa_out['key']="${key_prefix?}${key_value?}"
+                _jpa_out['@key']='str'                                ;;
+  esac
+
+  # [3] is a : that occurred at the start of the arg
+  p2="${BASH_REMATCH[3]}${1: ${#BASH_REMATCH[0]} }"  # type or value section following the key
+  if [[ $p2 =~ $_json_bash_005_p2_meta ]]; then
+
+    case "${BASH_REMATCH[2]}" in  # collection marker
+    ('['?']') _jpa_out['split']=${BASH_REMATCH[2]:1:1} ;;&
+    ('['*']') _jpa_out['collection']='array'           ;;
+    ('{'?'}') _jpa_out['split']=${BASH_REMATCH[2]:1:1} ;;&
+    ('{'*'}') _jpa_out['collection']='object'          ;;
+    esac
+
+    local _jpa_attributes=${BASH_REMATCH[3]:1:-1}
+    p3=${p2:${#BASH_REMATCH[0]}}
+
+    # Handle the type last because the regex match overwrites the matched groups
+    local _jpa_unverified_type=${BASH_REMATCH[1]}
+    if [[ ${_jpa_unverified_type?} =~ $_json_bash_type_name_pattern ]]; then
+      _jpa_out['type']=${_jpa_unverified_type?}
+    elif [[ ${_jpa_unverified_type?} ]]; then
+      echo "json.parse_argument(): type name must be one of auto, bool, false," \
+        "json, null, number, raw, string or true, but was ${_jpa_unverified_type@Q}" >&2
+      return 1
+    fi
+  elif [[ $p2 != :* && ${_jpa_out['key']:-} =~ [+~?]+$ ]]; then
+    # move flag characters from the end of the key to the value if no meta section
+    _jpa_out['key']=${_jpa_out['key']:0: - ${#BASH_REMATCH[0]} }
+    p3="${BASH_REMATCH[0]}${p2?}"
+  else
+    p3=$p2  # no type section, so value is everything after the key
+  fi
+
+  [[ $p3 =~ $_json_bash_005_p3_value ]]  # Always matches, can be 0-length
+  case "${BASH_REMATCH[1]}" in
+  (*'+'*)  _jpa_out['val_flag_strict']='+' ;;&
+  (*'~'*)  _jpa_out['val_flag_no']='~'     ;;&
+  (*'?'*)  _jpa_out['val_flag_empty']='?'  ;;&
+  (*'??'*) _jpa_out['val_flag_empty']='??' ;;&
+  esac
+
+  value=${p3: ${#BASH_REMATCH[0]} }
+  case "${BASH_REMATCH[2]}${value:0:2}" in
+  ('@/'*|'@./') _jpa_out['val']=${value?} _jpa_out['@val']='file' ;;
+  ('@'*)        _jpa_out['val']=${value?} _jpa_out['@val']='var'  ;;
+  ('='*)        _jpa_out['val']=${value?} _jpa_out['@val']='str'  ;;
+  (?*)
+    echo "json.parse_argument(): The argument is not correctly structured:" \
+      "The value following the : should look like :string or :number[] or :{}" \
+      "or :[,]/empty=null/ or :type[]// . Whereas the value after that must" \
+      "come after a = or @ e.g. foo:number=42 @foo:number? foo:[,]=a,b,c" >&2
+    return 1
+  ;;
+  esac
+
+  if [[ ${_jpa_attributes:-} ]]; then
+    json.parse_attributes "${_jpa_attributes:?}"
+  fi
+}
+
+function json.parse_attributes() {
+  local -n _jpa2_out=${out:?"\$out must name an Associative Array to hold parsed attributes"}
+  local _jpa_attrskv=${1?} _jpa_attrsk=() _jpa_attrsv=() IFS
+
+  if [[ ${_jpa_attrskv?} =~ ('//'|',,'|'==') ]]; then
+    _jpa_attrskv=${_jpa_attrskv//,,/'\/1'}  # Re-escape escapes so we can use , and = unambiguously.
+    _jpa_attrskv=${_jpa_attrskv//==/'\/2'}  # We make use of / in this temporary escape sequence, as / must be escaped as //
+
+    IFS=,; _jpa_attrskv=(${_jpa_attrskv})             # Split on commas
+    _jpa_attrskv=("${_jpa_attrskv[@]//'\/1'/,}")      # Restore ,, escapes as ,
+    _jpa_attrsk=("${_jpa_attrskv[@]/%=*/}")           # Remove =value suffix to get key
+    _jpa_attrsv=("${_jpa_attrskv[@]/#*([^=])?(=)/}")  # Remove key= prefix to get value
+
+    _jpa_attrsk=("${_jpa_attrsk[@]//'\/2'/'='}")   # Restore == escapes as =
+    _jpa_attrsv=("${_jpa_attrsv[@]//'\/2'/'=='}")  # Restore == escapes as == (values don't need to escape =, so == is ==).
+    _jpa_attrsv=("${_jpa_attrsv[@]//'//'/'/'}")    # Apply // escapes as /
+  elif [[ ${_jpa_attrskv?} ]]; then
+    IFS=,; _jpa_attrskv=(${_jpa_attrskv})             # Split on commas
+    _jpa_attrsk=("${_jpa_attrskv[@]/%=*/}")           # Remove =value suffix to get key
+    _jpa_attrsv=("${_jpa_attrskv[@]/#*([^=])?(=)/}")  # Remove key= prefix to get value
+  fi
+  # Handle the split attributes from either of the previous 2 cases
+  for i in "${!_jpa_attrsk[@]}"; do
+    _jpa2_out["${_jpa_attrsk["$i"]:-__empty__}"]=${_jpa_attrsv["$i"]}
+  done
 }
 
 # Parse a json argument expression into attributes in an associative array.

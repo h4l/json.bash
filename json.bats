@@ -939,6 +939,240 @@ function assert_005_p3_match() {
   arg='?+~@foo' flags='?+~@' next='foo' assert_005_p3_match
 }
 
+function assert_arg_parse2_invalid_argument() {
+  : ${arg?} ${msg:?}
+  out=__ignored run json._parse_argument2 "${arg?}"
+
+  [[ $status == 1 ]] \
+    || { echo "arg unexpectedly parsed succesfully: ${arg@Q}" >&2; return 1; }
+  [[ $output = *$msg* ]] || {
+    echo "output did not contain msg: msg=${msg@Q}," \
+      "output=${output@Q}" >&2; return 1;
+  }
+}
+
+@test "json._parse_argument2 :: reports invalid arguments" {
+  arg='.' msg="splat operator must be '...'" assert_arg_parse2_invalid_argument
+  arg='....' msg="splat operator must be '...'" assert_arg_parse2_invalid_argument
+  arg=':cheese' msg="type name must be one of auto, bool, false, json, null, number, raw, string or true, but was 'cheese'" assert_arg_parse2_invalid_argument
+
+  arg=':[' msg="The argument is not correctly structured:" assert_arg_parse2_invalid_argument
+  arg=':{' msg="The argument is not correctly structured:" assert_arg_parse2_invalid_argument
+  arg=':/foo=//=abc' msg="The argument is not correctly structured:" assert_arg_parse2_invalid_argument
+  arg='://foo' msg="The argument is not correctly structured:" assert_arg_parse2_invalid_argument
+}
+
+function assert_arg_parse2() {
+  expected=$(timeout 1 cat)
+  expected=${expected/#+([ $'\n'])/}
+  expected=${expected/%+([ $'\n'])/}
+  local -A attrs
+  out=attrs json._parse_argument2 "$1" || return 10
+  local attr_lines=() line
+  for name in "${!attrs[@]}"; do
+    printf -v line "%s = '%s'" "$name" "${attrs[$name]}"
+    attr_lines+=("${line:?}")
+  done
+  sorted_attrs=$(local IFS=$'\n'; LC_ALL=C sort <<<"${attr_lines[*]}")
+  if [[ $expected != "${sorted_attrs}" ]]; then
+    diff -u <(echo "${expected:?}") <(echo "${sorted_attrs}")
+    return 1
+  fi
+}
+
+@test "json._parse_argument2 :: parses valid arguments" {
+  assert_arg_parse2 '' <<<""  # no attrs
+  assert_arg_parse2 : <<<""
+  # keys
+  assert_arg_parse2 ... <<<"
+splat = 'true'
+"
+  assert_arg_parse2 ...: <<<"
+splat = 'true'
+"
+  assert_arg_parse2 foo <<<"
+@key = 'str'
+key = 'foo'
+"
+  assert_arg_parse2 ++~~???foo <<<"
+@key = 'str'
+key = 'foo'
+key_flag_empty = '??'
+key_flag_no = '~'
+key_flag_strict = '+'
+"
+  # We're not strict about flag order or count - more than the required number
+  # are the same as the same as the max.
+  assert_arg_parse2 ++~~???=foo <<<"
+@key = 'str'
+key = 'foo'
+key_flag_empty = '??'
+key_flag_no = '~'
+key_flag_strict = '+'
+"
+  assert_arg_parse2 ++~~???@foo <<<"
+@key = 'var'
+key = 'foo'
+key_flag_empty = '??'
+key_flag_no = '~'
+key_flag_strict = '+'
+"
+  assert_arg_parse2 ++~~???@/file <<<"
+@key = 'file'
+key = '/file'
+key_flag_empty = '??'
+key_flag_no = '~'
+key_flag_strict = '+'
+"
+  assert_arg_parse2 ++~~???@./file <<<"
+@key = 'file'
+key = './file'
+key_flag_empty = '??'
+key_flag_no = '~'
+key_flag_strict = '+'
+"
+  assert_arg_parse2 ?=foo~~++???= <<<"
+@key = 'str'
+@val = 'str'
+key = 'foo'
+key_flag_empty = '?'
+val = ''
+val_flag_empty = '??'
+val_flag_no = '~'
+val_flag_strict = '+'
+"
+  assert_arg_parse2 = <<<"
+@key = 'str'
+key = ''
+"
+  assert_arg_parse2 == <<<"
+@key = 'str'
+@val = 'str'
+key = ''
+val = ''
+"
+  assert_arg_parse2 === <<<"
+@key = 'str'
+key = '='
+"
+  assert_arg_parse2 ===? <<<"
+@key = 'str'
+key = '='
+val_flag_empty = '?'
+"
+  assert_arg_parse2 @ <<<"
+@key = 'var'
+key = ''
+"
+  assert_arg_parse2 @@ <<<"
+@key = 'var'
+@val = 'var'
+key = ''
+val = ''
+"
+  assert_arg_parse2 @@@ <<<"
+@key = 'var'
+key = '@'
+"
+  assert_arg_parse2 @@@? <<<"
+@key = 'var'
+key = '@'
+val_flag_empty = '?'
+"
+  assert_arg_parse2 :string <<<"
+type = 'string'
+"
+  assert_arg_parse2 :[] <<<"
+collection = 'array'
+"
+  assert_arg_parse2 :[,] <<<"
+collection = 'array'
+split = ','
+"
+  assert_arg_parse2 :{} <<<"
+collection = 'object'
+"
+  # , inside {} needs quoting to avoid expansion as two empty alternatives
+  assert_arg_parse2 :'{,}' <<<"
+collection = 'object'
+split = ','
+"
+  # others don't though
+  assert_arg_parse2 :{:} <<<"
+collection = 'object'
+split = ':'
+"
+  assert_arg_parse2 :// <<<""
+  assert_arg_parse2 :/a=b,,c,d===e==f,==g=//h/ <<<"
+=g = '/h'
+a = 'b,c'
+d= = 'e==f'
+"
+  assert_arg_parse2 :++~~??? <<<"
+val_flag_empty = '??'
+val_flag_no = '~'
+val_flag_strict = '+'
+"
+  assert_arg_parse2 := <<<"
+@val = 'str'
+val = ''
+"
+  assert_arg_parse2 :=x <<<"
+@val = 'str'
+val = 'x'
+"
+  assert_arg_parse2 :=foobar <<<"
+@val = 'str'
+val = 'foobar'
+"
+  assert_arg_parse2 :@foobar <<<"
+@val = 'var'
+val = 'foobar'
+"
+  assert_arg_parse2 :@/file <<<"
+@val = 'file'
+val = '/file'
+"
+  assert_arg_parse2 :@./file <<<"
+@val = 'file'
+val = './file'
+"
+  assert_arg_parse2 ...++~~???=tobe?:string[,]/a=b/++~~???@./or/not <<<"
+@key = 'str'
+@val = 'file'
+a = 'b'
+collection = 'array'
+key = 'tobe?'
+key_flag_empty = '??'
+key_flag_no = '~'
+key_flag_strict = '+'
+splat = 'true'
+split = ','
+type = 'string'
+val = './or/not'
+val_flag_empty = '??'
+val_flag_no = '~'
+val_flag_strict = '+'
+"
+}
+
+@test "json.parse_attributes" {
+  local -A attrs expected
+
+  attrs=(__); # bash thinks empty arrays are unbound, __ just makes it not empty
+  out=attrs json.parse_attributes ''
+  expected=(__); assert_array_equals attrs expected
+
+  attrs=(); out=attrs json.parse_attributes 'a=b,c=d'
+  expected=([a]=b [c]=d); assert_array_equals attrs expected
+
+  attrs=(); out=attrs json.parse_attributes 'ab=c//d,e=f,,g'
+  expected=(['ab']='c/d' ['e']='f,g'); assert_array_equals attrs expected
+
+  attrs=(); out=attrs json.parse_attributes 'a==b=c,d===e,===f'
+  expected=(['a=b']='c' ['d=']='e' ['=']='f'); assert_array_equals attrs expected
+}
+
 @test "json argument pattern :: non-matches" {
   # A ref key can't be empty, otherwise it would clash with the @=value syntax.
   # Also, an empty ref is not useful in practice.
@@ -1879,21 +2113,20 @@ function expect_json_array_invalid() {
 function assert_array_equals() {
   local -n left=${1:?} right=${2:?}
   declare -p left right
-  if [[ ${left@a} != *a* ]]; then
+  if [[ ${left@a} != *[aA]* ]]; then
     echo "assert_array_equals: left is not an array var" >&2; return 1
   fi
-  if [[ ${right@a} != *a* ]]; then
+  if [[ ${right@a} != *[aA]* ]]; then
     echo "assert_array_equals: right is not an array var" >&2; return 1
   fi
 
-  if [[ ${#left[@]} != ${#right[@]} ]]; then
-    echo "assert_array_equals: arrays have different lengths:" \
-      "${#left[@]} != ${#right[@]}" >&2; return 1;
-  fi
+  diff -u <(printf '%s\n' "${!left[@]}") <(printf '%s\n' "${!right[@]}") || {
+    echo "assert_array_equals: arrays have different keys" >&2; return 1
+  }
 
   for i in "${!left[@]}"; do
     if [[ ${left[$i]} != ${right[$i]} ]]; then
-      echo "assert_array_equals: arrays are unequal at index $i:" \
+      echo "assert_array_equals: arrays are unequal at index ${i@Q}:" \
         "${left[$i]@Q} != ${right[$i]@Q}" >&2
       return 1
     fi
