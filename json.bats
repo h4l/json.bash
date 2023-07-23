@@ -1852,7 +1852,7 @@ json(): failed to encode value as number: 'oops' from 'a:number=oops'
   [[ $i == 3 ]]
 }
 
-function expect_json_invalid() {
+function expect_json_args_invalid() {
   if [[ $# == 0 ]]; then return 1; fi
   if json.validate "$@"; then
     echo "expect_invalid: example unexpectedly passed validation: ${1@Q}" >&2
@@ -1864,22 +1864,22 @@ function expect_json_invalid() {
   initials=('' true)
   for initial in "${initials[@]}"; do
     read -ra _initials <<<"$initial" # '' -> (), true -> (true)
-    expect_json_invalid "${_initials[@]}" ''
-    expect_json_invalid "${_initials[@]}" 'truex'
-    expect_json_invalid "${_initials[@]}" 'false_'
-    expect_json_invalid "${_initials[@]}" 'nullx'
-    expect_json_invalid "${_initials[@]}" '42a'
-    expect_json_invalid "${_initials[@]}" '"abc'
-    expect_json_invalid "${_initials[@]}" '"ab\z"' # invalid escape
-    expect_json_invalid "${_initials[@]}" '"ab""ab"'
-    expect_json_invalid "${_initials[@]}" '['
-    expect_json_invalid "${_initials[@]}" '[]]'
-    expect_json_invalid "${_initials[@]}" '[][]'
-    expect_json_invalid "${_initials[@]}" '[a]'
-    expect_json_invalid "${_initials[@]}" '{'
-    expect_json_invalid "${_initials[@]}" '{}{}'
-    expect_json_invalid "${_initials[@]}" '{42:true}'
-    expect_json_invalid "${_initials[@]}" '{"foo":}'
+    expect_json_args_invalid "${_initials[@]}" ''
+    expect_json_args_invalid "${_initials[@]}" 'truex'
+    expect_json_args_invalid "${_initials[@]}" 'false_'
+    expect_json_args_invalid "${_initials[@]}" 'nullx'
+    expect_json_args_invalid "${_initials[@]}" '42a'
+    expect_json_args_invalid "${_initials[@]}" '"abc'
+    expect_json_args_invalid "${_initials[@]}" '"ab\z"' # invalid escape
+    expect_json_args_invalid "${_initials[@]}" '"ab""ab"'
+    expect_json_args_invalid "${_initials[@]}" '['
+    expect_json_args_invalid "${_initials[@]}" '[]]'
+    expect_json_args_invalid "${_initials[@]}" '[][]'
+    expect_json_args_invalid "${_initials[@]}" '[a]'
+    expect_json_args_invalid "${_initials[@]}" '{'
+    expect_json_args_invalid "${_initials[@]}" '{}{}'
+    expect_json_args_invalid "${_initials[@]}" '{42:true}'
+    expect_json_args_invalid "${_initials[@]}" '{"foo":}'
   done
 }
 
@@ -1912,6 +1912,71 @@ function expect_json_array_invalid() {
     expect_json_array_invalid "${_initials[@]}" '{42:true}'
     expect_json_array_invalid "${_initials[@]}" '{"foo":}'
   done
+}
+
+function expect_json_valid() {
+  (( $# > 0 ))
+  : ${type?"\$type must be set"}
+
+  json.validate "$@"
+  local args=("$@")
+  in=args json.validate
+
+  for col in array object; do
+    col_type="${type:?}_${col:?}"
+
+    local example; for example in "$@"; do
+      args=(); out=args json_return=${col:?} json @example:json
+
+      type=${col_type:?} json.validate "${args:?}"
+      type=${col_type:?} in=args json.validate
+    done
+  done
+}
+
+function expect_json_invalid() {
+  (( $# > 0 ))
+  : ${type?"\$type must be set"}
+
+  # validate individually to avoid invalid examples masking invalid ones
+  local example; for example in "$@"; do
+    expect_json_args_invalid "${example:?}"
+    expect_json_array_invalid "${example:?}"
+
+    for col in array object; do
+      col_type="${type:?}_${col:?}"
+
+      declare -p type example col
+      local args=(); out=args json_return=${col:?} json @example:json
+      declare -p type example col args
+      type=${col_type:?} expect_json_args_invalid "${args[@]:?}"
+      type=${col_type:?} expect_json_array_invalid "${args[@]:?}"
+    done
+  done
+}
+
+@test "json validator :: validates JSON sub-type" {
+
+  type=json expect_json_valid '{"a":1}' 'true' '"foo"'
+  # no invalid examples as all valid JSON is valid for the json type!
+
+  type=string expect_json_valid '"foo"' '""'
+  type=string expect_json_invalid '{}' '[]' 42 true false null
+
+  type=number expect_json_valid 0 1 42 -0.12e+6
+  type=number expect_json_invalid '{}' '[]' '"foo"' true false null
+
+  type=bool expect_json_valid true false
+  type=bool expect_json_invalid '{}' '[]' '"foo"' 42 null
+
+  type=true expect_json_valid true
+  type=true expect_json_invalid '{}' '[]' '"foo"' 42 false null
+
+  type=false expect_json_valid false
+  type=false expect_json_invalid '{}' '[]' '"foo"' 42 true null
+
+  type=null expect_json_valid null
+  type=null expect_json_invalid '{}' '[]' '"foo"' 42 true false
 }
 
 function assert_array_equals() {

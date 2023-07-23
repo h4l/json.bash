@@ -27,6 +27,12 @@ _json_bash_auto_pattern="\"(null|true|false|${_json_bash_number_pattern:?})\""
 _json_bash_number_glob='?([-])@(0|[1-9]*([0-9]))?([.]+([0-9]))?([eE]?([+-])+([0-9]))'
 _json_bash_auto_glob="\"@(true|false|null|$_json_bash_number_glob)\""
 _json_in_err="in= must be set when no positional args are given"
+_json_bash_validation_type=$'(j|s|n|b|t|f|z|Oj|Os|On|Ob|Ot|Of|Oz|Aj|As|An|Ab|At|Af|Az)'
+declare -gA _json_bash_validation_types=(
+  ['json']='j' ['string']='s' ['number']='n' ['bool']='b' ['true']='t' ['false']='f' ['null']='z'
+  ['json_object']='Oj' ['string_object']='Os' ['number_object']='On' ['bool_object']='Ob' ['true_object']='Ot' ['false_object']='Of' ['null_object']='Oz'
+  ['json_array']='Aj' ['string_array']='As' ['number_array']='An' ['bool_array']='Ab' ['true_array']='At' ['false_array']='Af' ['null_array']='Az'
+)
 declare -gA _json_bash_escapes=(
                      [$'\x01']='\u0001' [$'\x02']='\u0002' [$'\x03']='\u0003'
   [$'\x04']='\u0004' [$'\x05']='\u0005' [$'\x06']='\u0006' [$'\x07']='\u0007'
@@ -209,7 +215,7 @@ function json.encode_raw() {
 }
 
 function json.encode_json() {
-  if ! json.validate "$@"; then
+  if ! type=json json.validate "$@"; then
     if [[ $# == 0 ]]; then local -n _jej_in=${in:?"$_json_in_err"};
     else local _jej_in=("$@"); fi
     echo "json.encode_json(): not all inputs are valid JSON:\
@@ -231,33 +237,22 @@ $(printf " %s" "${_jej_in[@]@Q}")" >&2
 function json.start_json_validator() {
   if [[ ${_json_validator_pids[$$]:-} != "" ]]; then return 0; fi
 
-  local ws string number atom array object json validation_request
+  local array validation_request
   # This is a PCRE regex that matches JSON. This is possible because we use
   # PCRE's recursive patterns to match JSON's nested constructs. And also
   # possessive repetition quantifiers to prevent expensive backtracking on match
   # failure. Backtracking is not required to parse JSON as it's not ambiguous.
   # If a rule fails to match, the input is known to be invalid, there's no
   # possibility of an alternate rule matching, so backtracking is pointless.
-  ws='(?<ws> [\x20\x09\x0A\x0D]*+ )'  # space, tab, new line, carriage return
-  string='(?<str> " (?:
-    [\x20-\x21\x23-\x5B\x5D-\xFF]
-    | \\ (?: ["\\/bfnrt] | u [A-Fa-f0-9]{4} )
-  )*+ " )'
-  number='-?+ (?: 0 | [1-9][0-9]*+ ) (?: \. [0-9]*+ )?+ (?: [eE][+-]?+[0-9]++ )?+'
-  atom="true | false | null | ${number:?} | ${string:?}"
-  array='\[  (?: (?&ws) (?&json) (?: (?&ws) , (?&ws) (?&json) )*+ )?+ (?&ws) \]'
-  object='\{ (?:
-    (?<entry> (?&ws) (?&str) (?&ws) : (?&ws) (?&json) )
-    (?: (?&ws) , (?&entry) )*+
-  )?+ (?&ws) \}'
-  json="(?<json> ${ws:?} (?: ${array:?} | ${object:?} | ${atom:?} ) (?&ws) )"
-
-  validation_request="
-    ^ [\w]++ (?:
-      (?=
-        (?<pair> : (?&pair)?+ \x1E ${json:?} ) $
-      ) :++
-    )?+"
+  #
+  # See hack/syntax_patterns.bash for the readable source of this condensed
+  # version.
+  #
+  # It doesn't match JSON directly, but rather it matches a simple validation
+  # request protocol. json.validate costructs validation request messages that
+  # match this regex when the JSON data is valid for the type specified in the
+  # validation request.
+  validation_request=$'(:?(?<bool>true|false)(?<true>true)(?<false>false)(?<null>null)(?<ws>[\\x20\\x09\\x0A\\x0D]*+)(?<json>\\[(?:(?&ws)(?&json)(?:(?&ws),(?&ws)(?&json))*+)?+(?&ws)\\]|\\{(?:(?<entry>(?&ws)(?&str)(?&ws):(?&ws)(?&json))(?:(?&ws),(?&entry))*+)?+(?&ws)\\}|true|false|null|(?<num>-?+(?:0|[1-9][0-9]*+)(?:\\.[0-9]*+)?+(?:[eE][+-]?+[0-9]++)?+)|(?<str>"(?:[\\x20-\\x21\\x23-\\x5B\\x5D-\\xFF]|\\\\(?:["\\\\/bfnrt]|u[A-Fa-f0-9]{4}))*+"))){0}^[\\w]++(?:(?=((?<pair>:(?&pair)?+\\x1E(?:j(?&ws)(?&json)(?&ws)|s(?&ws)(?&str)(?&ws)|n(?&ws)(?&num)(?&ws)|b(?&ws)(?&bool)(?&ws)|t(?&ws)(?&true)(?&ws)|f(?&ws)(?&false)(?&ws)|z(?&ws)(?&null)(?&ws)|Oj(?&ws)\\{(?:(?<entry_json>(?&ws)(?&str)(?&ws):(?&ws)(?&json))(?:(?&ws),(?&entry_json))*+)?+(?&ws)\\}(?&ws)|Os(?&ws)\\{(?:(?<entry_str>(?&ws)(?&str)(?&ws):(?&ws)(?&str))(?:(?&ws),(?&entry_str))*+)?+(?&ws)\\}(?&ws)|On(?&ws)\\{(?:(?<entry_num>(?&ws)(?&str)(?&ws):(?&ws)(?&num))(?:(?&ws),(?&entry_num))*+)?+(?&ws)\\}(?&ws)|Ob(?&ws)\\{(?:(?<entry_bool>(?&ws)(?&str)(?&ws):(?&ws)(?&bool))(?:(?&ws),(?&entry_bool))*+)?+(?&ws)\\}(?&ws)|Ot(?&ws)\\{(?:(?<entry_true>(?&ws)(?&str)(?&ws):(?&ws)(?&true))(?:(?&ws),(?&entry_true))*+)?+(?&ws)\\}(?&ws)|Of(?&ws)\\{(?:(?<entry_false>(?&ws)(?&str)(?&ws):(?&ws)(?&false))(?:(?&ws),(?&entry_false))*+)?+(?&ws)\\}(?&ws)|Oz(?&ws)\\{(?:(?<entry_null>(?&ws)(?&str)(?&ws):(?&ws)(?&null))(?:(?&ws),(?&entry_null))*+)?+(?&ws)\\}(?&ws)|Aj(?&ws)\\[(?:(?&ws)(?&json)(?:(?&ws),(?&ws)(?&json))*+)?+(?&ws)\\](?&ws)|As(?&ws)\\[(?:(?&ws)(?&str)(?:(?&ws),(?&ws)(?&str))*+)?+(?&ws)\\](?&ws)|An(?&ws)\\[(?:(?&ws)(?&num)(?:(?&ws),(?&ws)(?&num))*+)?+(?&ws)\\](?&ws)|Ab(?&ws)\\[(?:(?&ws)(?&bool)(?:(?&ws),(?&ws)(?&bool))*+)?+(?&ws)\\](?&ws)|At(?&ws)\\[(?:(?&ws)(?&true)(?:(?&ws),(?&ws)(?&true))*+)?+(?&ws)\\](?&ws)|Af(?&ws)\\[(?:(?&ws)(?&false)(?:(?&ws),(?&ws)(?&false))*+)?+(?&ws)\\](?&ws)|Az(?&ws)\\[(?:(?&ws)(?&null)(?:(?&ws),(?&ws)(?&null))*+)?+(?&ws)\\](?&ws)))$)):++)?+'
 
   { coproc json_validator ( grep --null-data --only-matching --line-buffered \
     -P -e "${validation_request//[$' \n']/}" )
@@ -289,6 +284,8 @@ function json.validate() {
   if [[ ${_json_validator_pids[$$]:-} == "" ]];
   then json.start_json_validator; fi
 
+  local _jv_type=${_json_bash_validation_types[${type:-json}]:?"json.validate: unsupported \$type: ${type@Q}"}
+
   let "_json_validate_id=${_json_validate_id:-0}+1"; local id=$_json_validate_id
   local count_markers IFS # delimit JSON with Record Separator
   # Send a null-terminated JSON validation request to the validator process and
@@ -297,12 +294,18 @@ function json.validate() {
     local -n _validate_json_in="${in:?$_json_in_err}"
     if [[ ${#_validate_json_in[@]} == 0 ]]; then return 0; fi
     printf -v count_markers ':%.0s' "${!_validate_json_in[@]}"
-    IFS=$'\x1E'; printf '%d%s\x1E%s\x00' "${id:?}" "${count_markers?}" \
-      "${_validate_json_in[*]}" >&"${_json_validator_in_fds[$$]:?}"
+    {
+      printf '%d%s' "${id:?}" "${count_markers:?}"
+      printf "\x1E${_jv_type:?}%s" "${_validate_json_in[@]}"
+      printf '\x00'
+    } >&"${_json_validator_in_fds[$$]:?}"
   else
     IFS=''; count_markers=${*/*/:}
-    IFS=$'\x1E'; printf '%d%s\x1E%s\x00' "${id:?}" "${count_markers?}" \
-      "$*" >&"${_json_validator_in_fds[$$]:?}"
+    {
+      printf '%d%s' "${id:?}" "${count_markers?}"
+      printf "\x1E${_jv_type:?}%s" "$@"
+      printf '\x00'
+    } >&"${_json_validator_in_fds[$$]:?}"
   fi
 
   IFS=''

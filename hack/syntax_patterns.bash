@@ -54,6 +54,80 @@ function argument_005() {
   format_regex_var _json_bash_005_p3_value "${p3_value:?}"
 }
 
+function _object_pattern() {
+  type=${1:?'<type> argument not set'}
+  echo "(?&ws) \{ (?:
+    (?<entry_${type:?}> (?&ws) (?&str) (?&ws) : (?&ws) (?&${type:?}) )
+    (?: (?&ws) , (?&entry_${type:?}) )*+
+  )?+ (?&ws) \} (?&ws) "
+}
+
+function _array_pattern() {
+  type=${1:?'<type> argument not set'}
+  echo "(?&ws) \[
+    (?: (?&ws) (?&${type:?}) (?: (?&ws) , (?&ws) (?&${type:?}) )*+ )?+ (?&ws)
+  \] (?&ws)"
+}
+
+#
+function json_validation_request() {
+  local ws string number atom array object json validation_request
+  # This is a PCRE regex that matches JSON. This is possible because we use
+  # PCRE's recursive patterns to match JSON's nested constructs. And also
+  # possessive repetition quantifiers to prevent expensive backtracking on match
+  # failure. Backtracking is not required to parse JSON as it's not ambiguous.
+  # If a rule fails to match, the input is known to be invalid, there's no
+  # possibility of an alternate rule matching, so backtracking is pointless.
+  ws='(?<ws> [\x20\x09\x0A\x0D]*+ )'  # space, tab, new line, carriage return
+  string='(?<str> " (?:
+    [\x20-\x21\x23-\x5B\x5D-\xFF]
+    | \\ (?: ["\\/bfnrt] | u [A-Fa-f0-9]{4} )
+  )*+ " )'
+  number='(?<num>  -?+ (?: 0 | [1-9][0-9]*+ ) (?: \. [0-9]*+ )?+ (?: [eE][+-]?+[0-9]++ )?+ )'
+  atom="true | false | null | ${number:?} | ${string:?}"
+  array='\[  (?: (?&ws) (?&json) (?: (?&ws) , (?&ws) (?&json) )*+ )?+ (?&ws) \]'
+  object='\{ (?:
+    (?<entry> (?&ws) (?&str) (?&ws) : (?&ws) (?&json) )
+    (?: (?&ws) , (?&entry) )*+
+  )?+ (?&ws) \}'
+  json="(?<json> ${array:?} | ${object:?} | ${atom:?} )"
+
+  validation_request="
+    (:? (?<bool> true | false ) (?<true> true ) (?<false> false ) (?<null> null )
+        ${ws:?} ${json:?}
+    ){0}
+    ^ [\w]++ (?:
+      (?= (
+        (?<pair> : (?&pair)?+ \x1E (?:
+            j  (?&ws) (?&json)  (?&ws)
+          | s  (?&ws) (?&str)   (?&ws)
+          | n  (?&ws) (?&num)   (?&ws)
+          | b  (?&ws) (?&bool)  (?&ws)
+          | t  (?&ws) (?&true)  (?&ws)
+          | f  (?&ws) (?&false) (?&ws)
+          | z  (?&ws) (?&null)  (?&ws)
+          | Oj $(_object_pattern json)
+          | Os $(_object_pattern str)
+          | On $(_object_pattern num)
+          | Ob $(_object_pattern bool)
+          | Ot $(_object_pattern true)
+          | Of $(_object_pattern false)
+          | Oz $(_object_pattern null)
+          | Aj $(_array_pattern json)
+          | As $(_array_pattern str)
+          | An $(_array_pattern num)
+          | Ab $(_array_pattern bool)
+          | At $(_array_pattern true)
+          | Af $(_array_pattern false)
+          | Az $(_array_pattern null)
+        ) ) $
+      )
+      ) :++
+    )?+"
+
+  format_regex_var validation_request "${validation_request:?}"
+}
+
 function bash_quote() {
   local quoted
   # Force bash to use $'...' syntax by including a non-printable character.
@@ -74,4 +148,5 @@ function format_regex_var() {
 # Generate the final pattern used in json.bash (run this script and manually
 # insert this output, it doesn't change often.)
 argument_005
+json_validation_request
 format_regex_var _json_bash_type_name_pattern "^ ${type_name:?} $"
