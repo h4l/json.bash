@@ -21,9 +21,6 @@ function json.is_compatible() {
 _json_bash_005_p1_key=$'^(\\.*)(($|:)|([+~?]*)([^.+~?:]((::|==|@@)|[^:=@])*)?)'
 _json_bash_005_p2_meta=$'^:([a-zA-Z0-9]+)?(\\[.?\\]|\\{.?\\})?(/((//|,,|==)|[^/])*/)?'
 _json_bash_005_p3_value=$'^([+~?]*)([@=]?)'
-_json_bash_005_argument=$'^((\\.{3}?\\+?~?\\?{0,2}[@=]?)(((::|==|@@)|[^:=@])*((::|==|@@)|[^:+~?@=]))?|((\\.{3}?\\+?~?\\?{0,2}[@=]?)(((::|==|@@)|[^:=@])*))?:(auto|bool|false|json|null|number|raw|string|true)?(\\[.?\\]|\\{.?\\})?(/((//|,,|==)|[^/])*/)?)?(\\+~?\\?{0,2}@?=?|~\\?{0,2}@?=?|\\?{1,2}@?=?|[@=]|$)'
-_json_bash_arg_pattern=$'^((@(::|==|@@|\\[\\[|[^:=[@]))?((::|==|@@|\\[\\[)|[^:=[@])*)?(:(auto|bool|false|json|null|number|raw|string|true))?(\\[((\\]\\]|,,|==)|[^]])*\\])?(@?=|$)'
-_json_bash_simple_arg_pattern=$'^((@[^:=[@]+)|([^:=[@]+))?(:(auto|bool|false|json|null|number|raw|string|true))?((\\[([^]:=[@,])?\\]))?((@?=)([^=].?|$)|$)'
 _json_bash_type_name_pattern=$'^(auto|bool|false|json|null|number|raw|string|true)$'
 _json_bash_number_pattern='-?(0|[1-9][0-9]*)(\.[0-9]*)?([eE][+-]?[0-9]+)?'
 _json_bash_auto_pattern="\"(null|true|false|${_json_bash_number_pattern:?})\""
@@ -606,84 +603,14 @@ function json.parse_attributes() {
 # example, no default type is set if the argument has no type present. The
 # caller can initialise the output array with defaults, or apply them later.
 function json.parse_argument() {
-  local -n _jpa_out=${out:?'$out must name an Associative Array to hold parsed attributes'} \
-    _jpa_keyfull=BASH_REMATCH[1] _jpa_keyref=BASH_REMATCH[2] _jpa_keyref1=BASH_REMATCH[3] \
-    _jpa_keyesc=BASH_REMATCH[5] _jpa_type=BASH_REMATCH[7] \
-    _jpa_attrsfull=BASH_REMATCH[8] _jpa_attrsesc=BASH_REMATCH[10] \
-    _jpa_valeq=BASH_REMATCH[11]
-  local IFS _jpa_attrskv _jpa_val
-  # Parsing an argument results in a set of name=value attributes. The argument
-  # syntax (other than the [name=value,...] section) is all shorthand for
-  # attributes which could be manually specified using attributes.
-  if [[ ! ${1} =~ $_json_bash_arg_pattern ]]; then
-    echo "json(): invalid argument: '$1'" >&2; return 1;
+  local -n _jpa_out=${out:?'$out must name an Associative Array to hold parsed attributes'}
+
+  json._parse_argument2 "${1?}" || return $?
+
+  # backwards compatability with array=true/false
+  if [[ ${_jpa_out['collection']:-} == 'array' && ${_jpa_out['array']:-} != false ]]; then
+    _jpa_out['array']='true'
   fi
-  _jpa_val=${1:${#BASH_REMATCH[0]}}
-  if [[ $_jpa_type != '' ]]; then _jpa_out[type]=${_jpa_type:?}; fi
-
-  case "${_jpa_valeq}${_jpa_val:0:2}" in
-  (?*)        _jpa_out[val]=${_jpa_val};;&  # continue testing the rest
-  (@=/*|@=./) _jpa_out[@val]=file;;
-  (@=*)       _jpa_out[@val]=var;;
-  (=*)        _jpa_out[@val]=${_jpa_out[@val]:-str};;
-  esac
-
-  case "${_jpa_keyref:0:1}_${_jpa_keyfull:0:3}" in
-  (@_@/*|@_@./) _jpa_out[key]=${_jpa_keyfull:1}; _jpa_out[@key]=file;;
-  (@_*) _jpa_out[key]=${_jpa_keyfull:1}; _jpa_out[@key]=var;;
-  (_?*) _jpa_out[key]=${_jpa_keyfull} _jpa_out[@key]=${_jpa_out[@key]:-str};;
-  esac
-
-  case "${_jpa_keyref1}_${_jpa_keyesc}" in # unescape key only if escapes exist
-  (['@:[=']?_*|*_['@:[=']?) # detect double-char escape after initial @ or later
-    _jpa_out[key]=${_jpa_out[key]//@@/@}
-    _jpa_out[key]=${_jpa_out[key]//::/:}
-    _jpa_out[key]=${_jpa_out[key]//'[['/[}
-    _jpa_out[key]=${_jpa_out[key]//==/=}
-  ;;
-  esac
-
-  # bash bug? the string length of a nameref pointing to an array element is always 0
-  case "${#BASH_REMATCH[8]}_$_jpa_attrsesc" in
-  (0_) ;;  # No [] section
-  (2_)  # Empty [] section ( just [] )
-    _jpa_out[array]=${__jpa_array_default:-true}
-  ;;
-  (*_??)  # Non-empty with at least 1 escape
-    _jpa_attrskv="${_jpa_attrsfull:1:-1}"   # Remove the enclosing [ ]
-    _jpa_attrskv=${_jpa_attrskv//,,/'\]1'}  # Re-escape escapes so we can use , and = unambiguously.
-    _jpa_attrskv=${_jpa_attrskv//==/'\]2'}  # We make use of ] in this temporary escape sequence, as ] can't occur by itself because of the surrounding [ ].
-
-    IFS=,; _jpa_attrskv=(${_jpa_attrskv})             # Split on commas
-    _jpa_attrskv=("${_jpa_attrskv[@]//'\]1'/,}")      # Restore ,, escapes as ,
-    _jpa_attrsk=("${_jpa_attrskv[@]/%=*/}")           # Remove =value suffix to get key
-    _jpa_attrsv=("${_jpa_attrskv[@]/#*([^=])?(=)/}")  # Remove key= prefix to get value
-
-    _jpa_attrsk=("${_jpa_attrsk[@]//'\]2'/=}")  # Restore == escapes as =
-    _jpa_attrsv=("${_jpa_attrsv[@]//'\]2'/=}")  # Restore == escapes as == (values don't need to escape =, so == is ==).
-    _jpa_attrsk=("${_jpa_attrsk[@]//']]'/]}")   # Apply ]] escapes as ]
-    _jpa_attrsv=("${_jpa_attrsv[@]//']]'/]}")   # Apply ]] escapes as ]
-   ;;&  # continue matching
-  (*_)  # Non-empty without escapes
-    _jpa_attrskv="${_jpa_attrsfull:1:-1}"             # Remove the enclosing [ ]
-    IFS=,; _jpa_attrskv=(${_jpa_attrskv})             # Split on commas
-    _jpa_attrsk=("${_jpa_attrskv[@]/%=*/}")           # Remove =value suffix to get key
-    _jpa_attrsv=("${_jpa_attrskv[@]/#*([^=])?(=)/}")  # Remove key= prefix to get value
-  ;;&  # continue matching
-  (*)  # Handle the split attributes from either of the previous 2 cases
-    _jpa_out[array]=${__jpa_array_default:-true}  # Any [*] value is array=true by default. (Can include [array=false] to opt out)
-    # Split char shorthand: The first attribute can be a single char, which implies split=<char>.
-    if (( ${#_jpa_attrsk[0]} == 1 )) \
-      && [[ ${_jpa_attrsk[0]} == "${_jpa_attrskv[0]}" \
-        || "${_jpa_attrskv[0]}" == "]]" \
-        || "${_jpa_attrskv[0]}" == "\]2" ]]
-    then _jpa_attrsv[0]=${_jpa_attrsk[0]}; _jpa_attrsk[0]=split; fi
-
-    for i in "${!_jpa_attrsk[@]}"; do
-      _jpa_out["${_jpa_attrsk["$i"]:-__empty__}"]=${_jpa_attrsv["$i"]}
-    done
-  ;;
-  esac
 }
 
 function json.define_defaults() {
@@ -699,7 +626,7 @@ function json.define_defaults() {
   local -n defaults="${var_name:?}"
   # Can't fail to parse because we escape ] as ]]
   out="defaults" __jpa_array_default='false' json.parse_argument \
-      "[${attrs_string//']'/']]'}]"
+      ":/${attrs_string//'/'/'//'}/"
 
   if [[ ! ${defaults[type]:-string} =~ $_json_bash_type_name_pattern ]]; then
     local error="json.define_defaults(): defaults contain invalid 'type': ${defaults[type]@Q}"
@@ -742,24 +669,8 @@ function json() {
     if [[ $arg == '--' && ${_dashdash_seen:-} != true ]]
     then _dashdash_seen=true; continue; fi
     local -A _attrs=()
-    # Optimisation: Most patterns don't use escapes or named attributes, so use
-    # a cut-down, faster parsing strategy for common/simple patterns
-    if [[ $arg =~ $_json_bash_simple_arg_pattern ]]; then
-      case "${BASH_REMATCH[1]}:${BASH_REMATCH[5]}[${BASH_REMATCH[6]}]${BASH_REMATCH[9]}" in
-      (@*)          _attrs[key]=${BASH_REMATCH[1]:1} _attrs[@key]=var ;;&
-      ('@'@(./|/)*) _attrs[@key]=file ;;&
-      ([^@]*:*)     _attrs[key]=${BASH_REMATCH[1]} _attrs[@key]=str ;;&
-      (*:?*'['*)    _attrs[type]=${BASH_REMATCH[5]} ;;&
-      (*'[[]]'*)    _attrs[array]=true ;;&
-      (*'[['?']']*) _attrs[array]=true _attrs[split]=${BASH_REMATCH[8]} ;;&
-      (*=*)         _attrs[val]="${BASH_REMATCH[11]}${arg:${#BASH_REMATCH[0]}}" _attrs[@val]=str ;;&
-      (*@=@(./|/*))  _attrs[@val]=file ;;
-      (*@=*)        _attrs[@val]=var ;;&
-      esac
-    else
-      if ! out=_attrs json.parse_argument "$arg"; then
-        json._error "json(): argument is not structured correctly: ${arg@Q}"; return 2;
-      fi
+    if ! out=_attrs json.parse_argument "$arg"; then
+      json._error "json(): argument is not structured correctly: ${arg@Q}"; return 2;
     fi
     unset -n {_key,_value}{,_file}; unset {_key,_value}{,_file};
 
