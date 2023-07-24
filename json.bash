@@ -257,7 +257,7 @@ function json.start_json_validator() {
   { coproc json_validator ( grep --null-data --only-matching --line-buffered \
     -P -e "${validation_request//[$' \n']/}" )
   } 2>/dev/null  # hide interactive job control PID output
-  _json_validator_pids[$$]=json_validator_PID
+  _json_validator_pids[$$]=${json_validator_PID:?}
 
   # Bash only allows 1 coproc per bash process, so by creating a coproc we would
   # normally prevent another things in this process from creating one. We can
