@@ -1838,16 +1838,18 @@ json(): failed to encode value as number: 'oops' from 'a:number=oops'
 }
 
 @test "json validator :: validates JSON with insignificant whitespace" {
-  local ws_chars=($' \t\n\r')
+  local ws_chars=($' \t\n\r') src
   for i in 0 1 2 3; do
     spaced_json_template=' { "a" : [ "c" , [ { } ] ] , "b" : null } '
     ws="${ws_chars:$i:1}"
     spaced_json=${spaced_json_template// /"${ws:?}"}
     json.validate "${spaced_json:?}"
+    src=("${spaced_json:?}"); in=src json.validate
 
     ws="${ws_chars:$i:4}${ws_chars:0:$i}"
     spaced_json=${spaced_json_template// /"${ws:?}"}
     json.validate "${spaced_json:?}"
+    src=("${spaced_json:?}"); in=src json.validate
   done
   [[ $i == 3 ]]
 }

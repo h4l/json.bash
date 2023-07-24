@@ -254,7 +254,7 @@ function json.start_json_validator() {
   # validation request.
   validation_request=$'(:?(?<bool>true|false)(?<true>true)(?<false>false)(?<null>null)(?<ws>[\\x20\\x09\\x0A\\x0D]*+)(?<json>\\[(?:(?&ws)(?&json)(?:(?&ws),(?&ws)(?&json))*+)?+(?&ws)\\]|\\{(?:(?<entry>(?&ws)(?&str)(?&ws):(?&ws)(?&json))(?:(?&ws),(?&entry))*+)?+(?&ws)\\}|true|false|null|(?<num>-?+(?:0|[1-9][0-9]*+)(?:\\.[0-9]*+)?+(?:[eE][+-]?+[0-9]++)?+)|(?<str>"(?:[\\x20-\\x21\\x23-\\x5B\\x5D-\\xFF]|\\\\(?:["\\\\/bfnrt]|u[A-Fa-f0-9]{4}))*+"))){0}^[\\w]++(?:(?=((?<pair>:(?&pair)?+\\x1E(?:j(?&ws)(?&json)(?&ws)|s(?&ws)(?&str)(?&ws)|n(?&ws)(?&num)(?&ws)|b(?&ws)(?&bool)(?&ws)|t(?&ws)(?&true)(?&ws)|f(?&ws)(?&false)(?&ws)|z(?&ws)(?&null)(?&ws)|Oj(?&ws)\\{(?:(?<entry_json>(?&ws)(?&str)(?&ws):(?&ws)(?&json))(?:(?&ws),(?&entry_json))*+)?+(?&ws)\\}(?&ws)|Os(?&ws)\\{(?:(?<entry_str>(?&ws)(?&str)(?&ws):(?&ws)(?&str))(?:(?&ws),(?&entry_str))*+)?+(?&ws)\\}(?&ws)|On(?&ws)\\{(?:(?<entry_num>(?&ws)(?&str)(?&ws):(?&ws)(?&num))(?:(?&ws),(?&entry_num))*+)?+(?&ws)\\}(?&ws)|Ob(?&ws)\\{(?:(?<entry_bool>(?&ws)(?&str)(?&ws):(?&ws)(?&bool))(?:(?&ws),(?&entry_bool))*+)?+(?&ws)\\}(?&ws)|Ot(?&ws)\\{(?:(?<entry_true>(?&ws)(?&str)(?&ws):(?&ws)(?&true))(?:(?&ws),(?&entry_true))*+)?+(?&ws)\\}(?&ws)|Of(?&ws)\\{(?:(?<entry_false>(?&ws)(?&str)(?&ws):(?&ws)(?&false))(?:(?&ws),(?&entry_false))*+)?+(?&ws)\\}(?&ws)|Oz(?&ws)\\{(?:(?<entry_null>(?&ws)(?&str)(?&ws):(?&ws)(?&null))(?:(?&ws),(?&entry_null))*+)?+(?&ws)\\}(?&ws)|Aj(?&ws)\\[(?:(?&ws)(?&json)(?:(?&ws),(?&ws)(?&json))*+)?+(?&ws)\\](?&ws)|As(?&ws)\\[(?:(?&ws)(?&str)(?:(?&ws),(?&ws)(?&str))*+)?+(?&ws)\\](?&ws)|An(?&ws)\\[(?:(?&ws)(?&num)(?:(?&ws),(?&ws)(?&num))*+)?+(?&ws)\\](?&ws)|Ab(?&ws)\\[(?:(?&ws)(?&bool)(?:(?&ws),(?&ws)(?&bool))*+)?+(?&ws)\\](?&ws)|At(?&ws)\\[(?:(?&ws)(?&true)(?:(?&ws),(?&ws)(?&true))*+)?+(?&ws)\\](?&ws)|Af(?&ws)\\[(?:(?&ws)(?&false)(?:(?&ws),(?&ws)(?&false))*+)?+(?&ws)\\](?&ws)|Az(?&ws)\\[(?:(?&ws)(?&null)(?:(?&ws),(?&ws)(?&null))*+)?+(?&ws)\\](?&ws)))$)):++)?+'
 
-  { coproc json_validator ( grep --null-data --only-matching --line-buffered \
+  { coproc json_validator ( grep --only-matching --line-buffered \
     -P -e "${validation_request//[$' \n']/}" )
   } 2>/dev/null  # hide interactive job control PID output
   _json_validator_pids[$$]=${json_validator_PID:?}
@@ -288,28 +288,35 @@ function json.validate() {
 
   let "_json_validate_id=${_json_validate_id:-0}+1"; local id=$_json_validate_id
   local count_markers IFS # delimit JSON with Record Separator
-  # Send a null-terminated JSON validation request to the validator process and
-  # read the response to determine if the JSON was valid.
+  # Ideally we'd use null-terminated "lines" with grep's --null-data, but I can't
+  # get consistent reads after writes that way. (The problem appears to be with
+  # grep, as if I substitute grep for a hack/alternate_validator.py (which
+  # flushes consistently after null bytes) it works fine.) Line buffering with
+  # grep works consistently too, so we do that.
+  # The grep man page does warn that: "[the -P] option is experimental when
+  # combined with the -z (--null-data) option".
   if [[ $# == 0 ]]; then
     local -n _validate_json_in="${in:?$_json_in_err}"
     if [[ ${#_validate_json_in[@]} == 0 ]]; then return 0; fi
     printf -v count_markers ':%.0s' "${!_validate_json_in[@]}"
     {
       printf '%d%s' "${id:?}" "${count_markers:?}"
-      printf "\x1E${_jv_type:?}%s" "${_validate_json_in[@]}"
-      printf '\x00'
+      # \n is the end of a validation request, so we need to remove \n in JSON
+      # input. We map them to \r, which don't JSON affect validity.
+      printf "\x1E${_jv_type:?}%s" "${_validate_json_in[@]//$'\n'/$'\r'}"
+      printf '\n'
     } >&"${_json_validator_in_fds[$$]:?}"
   else
     IFS=''; count_markers=${*/*/:}
     {
       printf '%d%s' "${id:?}" "${count_markers?}"
-      printf "\x1E${_jv_type:?}%s" "$@"
-      printf '\x00'
+      printf "\x1E${_jv_type:?}%s" "${@//$'\n'/$'\r'}"
+      printf '\n'
     } >&"${_json_validator_in_fds[$$]:?}"
   fi
 
   IFS=''
-  if ! read -ru "${_json_validator_out_fds[$$]:?}" -t 4 -d '' response; then
+  if ! read -ru "${_json_validator_out_fds[$$]:?}" -t 4 response; then
     if ! json.check_json_validator_running; then
       echo "json.bash: json validator coprocess unexpectedly died" >&2
       return 2
