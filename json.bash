@@ -17,6 +17,8 @@ function json.is_compatible() {
   fi
 }
 
+if shopt -q patsub_replacement 2>/dev/null; then declare -g _json_bash_feat_patsub=true; fi
+
 # Generated in hack/argument_pattern.bash
 _json_bash_005_p1_key=$'^(\\.*)(($|:)|([+~?]*)([^.+~?:]((::|==|@@)|[^:=@])*)?)'
 _json_bash_005_p2_meta=$'^:([a-zA-Z0-9]+)?(\\[.?\\]|\\{.?\\})?(/((//|,,|==)|[^/])*/)?'
@@ -232,6 +234,66 @@ $(printf " %s" "${_jej_in[@]@Q}")" >&2
   (*)
     local IFS=${join:?}; json.buffer_output "$*";;
   esac
+}
+
+# Create a variable-length JSON object with keys of a consistent type.
+# $type is the type of each entry. $in names an associative array of key-values,
+# an indexed array containing multiple JSON objects to merge into a single
+# object, or positional arguments, which are key1, value1, key2, value2...
+function json.encode_object() {
+  : ${type:?"json.encode_object(): \$type must be provided"}
+  if (( $# > 0 )); then
+    if (( $# % 2 == 1 )); then
+      echo "json.encode_object(): number of arguments is odd - not all keys have values" >&2
+      return 1
+    fi
+    if [[ ${type:?} == string ]]; then
+      local -a _jeo_strings=() _jeo_obj=('{' '' '}')
+      out=_jeo_strings join='' json.encode_string "$@"
+      printf -v '_jeo_obj[1]' '%s:%s,' "${_jeo_strings[@]:?}"
+      _jeo_obj[1]=${_jeo_obj[1]/%,/}
+      in='_jeo_obj' json.buffer_output
+      return 0
+    fi
+    local -A _jeo_entries=();
+    local -a _jeo_keys=() _jeo_values=()
+    local i j; for ((i=1; i<=$#; i+=2)); do
+      j=$((i+1)); _jeo_keys+=("${!i?}") _jeo_values+=("${!j?}")
+    done
+  elif [[ ${entries:-} ]]; then
+    local -n _jeo_entries=${entries:?}
+    local -a _jeo_keys=("${!_jeo_entries[@]}") _jeo_values=("${_jeo_entries[@]}")
+  elif [[ ${keys:-} && ${values:-} ]]; then
+    local -n _jeo_keys=${keys:?} _jeo_values=${values:?}
+    if [[ ${#_jeo_keys[@]} != "${#_jeo_values[@]}" ]]; then
+      echo "json.encode_objects(): unequal number of keys and values:" \
+        "${#_jeo_keys[@]} keys, ${#_jeo_values[@]} values" >&2
+      return 1
+    fi
+  else
+    echo 'json.encode_object(): inputs are not provided correctly. Pass an' \
+      'even number of arguments, the name of an associative array as $entries' \
+      'or the name of index arrays as $keys and $values.' >&2; return 1
+  fi
+
+  if [[ ${#_jeo_keys[@]} == 0 ]]; then json.buffer_output '{}'; return; fi
+
+  local _jeo_encoded_keys _jeo_encoded_values
+  in=_jeo_keys join='' out=_jeo_encoded_keys json.encode_string  # can't fail
+  in=_jeo_values join='' out=_jeo_encoded_values "json.encode_${type:?}" || return $?
+
+  local _jeo_template
+  # To avoid bash-level looping, we create a template that will consume all values
+  if [[ ${_json_bash_feat_patsub:-} ]]; then
+    printf -v _jeo_template '%s:%%s,' "${_jeo_encoded_keys[@]//["%\\"]/&&}"
+  else
+    _jeo_encoded_keys=("${_jeo_encoded_keys[@]//'%'/'%%'}")
+    printf -v _jeo_template '%s:%%s,' "${_jeo_encoded_keys[@]//"\\"/"\\\\"}"
+  fi
+  _jeo_template=${_jeo_template/%,/}  # remove the trailing comma
+  local -a _jeo_obj=('{' '' '}')
+  printf -v '_jeo_obj[1]' "${_jeo_template?}" "${_jeo_encoded_values[@]}"
+  in='_jeo_obj' json.buffer_output
 }
 
 function json.start_json_validator() {

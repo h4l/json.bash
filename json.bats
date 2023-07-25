@@ -379,6 +379,65 @@ if actual != expected:
   (( ${tests:?} == 4 * 6 ))
 }
 
+@test "json.encode_object" {
+  [[ $(type=string json.encode_object 'a b' '1 2'  c d) == '{"a b":"1 2","c":"d"}' ]]
+  [[ $(type=number json.encode_object a 1 c 2) == '{"a":1,"c":2}' ]]
+  [[ $(type=bool json.encode_object a true c false) == '{"a":true,"c":false}' ]]
+  [[ $(type=true json.encode_object a true c true) == '{"a":true,"c":true}' ]]
+  [[ $(type=false json.encode_object a false c false) == '{"a":false,"c":false}' ]]
+  [[ $(type=null json.encode_object a null c null) == '{"a":null,"c":null}' ]]
+  [[ $(type=json json.encode_object a '{"b":42}' c [1,2]) == '{"a":{"b":42},"c":[1,2]}' ]]
+  [[ $(type=raw json.encode_object a '{"b":42}' c [1,2]) == '{"a":{"b":42},"c":[1,2]}' ]]
+
+  local k=(a b) v_str=('foo bar' 42) v_json=('{}' true)
+  [[ $(type=string keys=k values=v_str json.encode_object) == '{"a":"foo bar","b":"42"}' ]]
+  [[ $(type=json keys=k values=v_json json.encode_object) == '{"a":{},"b":true}' ]]
+
+  local -A kv=([a]='foo bar' [b]='bar baz')
+  # order of associative array keys is not defined
+  type=string entries=kv json.encode_object \
+    | compare=parsed equals_json '{a: "foo bar", b: "bar baz"}'
+
+  local buff=()
+  out=buff type=string keys=k values=v_str json.encode_object
+  [[ $(printf '%s' "${buff[@]}") == '{"a":"foo bar","b":"42"}' ]]
+}
+
+@test "json.encode_object :: non-errors" {
+  local things=('a b' 'c d')
+  things[5]='foo'
+  # a regular array can be used with entries — the keys are integer indexes
+  [[ $(type=string entries=things json.encode_object) == '{"0":"a b","1":"c d","5":"foo"}' ]]
+}
+
+@test "json.encode_object :: errors" {
+  run json.encode_object
+  echo "$output"
+  [[ $status == 1 && $output == *"\$type must be provided"* ]]
+
+  type=string run json.encode_object
+  echo "$output"
+  [[ $status == 1 && $output == *'inputs are not provided correctly.'* ]]
+
+  local k=() v=()
+  # no values specified
+  keys=k type=string run json.encode_object
+  [[ $status == 1 && $output == *'inputs are not provided correctly.'* ]]
+
+  # no keys specified
+  values=v type=string run json.encode_object
+  [[ $status == 1 && $output == *'inputs are not provided correctly.'* ]]
+
+  # unequal number of keys / values
+  k=(foo)
+  keys=k values=v type=string  run json.encode_object
+  [[ $status == 1 && $output == *'unequal number of keys and values: 1 keys, 0 values' ]]
+
+  # unequal number of keys / values via arguments
+  type=string  run json.encode_object a
+  [[ $status == 1 && $output == *'number of arguments is odd - not all keys have values' ]]
+}
+
 # Verify that a json.encode_${type} function handles in & out parameters correctly
 function assert_input_encodes_to_output_under_all_calling_conventions() {
   : "${input?}" "${output:?}" "${join?}"
