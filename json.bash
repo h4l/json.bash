@@ -236,23 +236,32 @@ $(printf " %s" "${_jej_in[@]@Q}")" >&2
   esac
 }
 
-# Create a variable-length JSON object with keys of a consistent type.
-# $type is the type of each entry. $in names an associative array of key-values,
-# an indexed array containing multiple JSON objects to merge into a single
-# object, or positional arguments, which are key1, value1, key2, value2...
-function json.encode_object() {
+# Create a sequence of JSON object entries with values of a consistent type.
+#
+# Entries are created from one of:
+#  - positional arguments: key1, value1, key2, value2...
+#  - $entries naming an associative array of key, value pairs
+#  - $entries naming an indexed array of pre-encoded JSON objects
+#  - $keys $values naming indexed arrays of equal length, containing the keys
+#    and values
+# $type is the type of each entry's value. Input values must be valid for this
+# type — pre-encoded entries are validated to be JSON objects holding values of
+# this type (unless the type is 'raw', in which case no validation is done).
+# Values from other inputs must be valid inputs to the json.encode_$type
+# functions.
+function json.encode_object_entries() {
   : ${type:?"json.encode_object(): \$type must be provided"}
   if (( $# > 0 )); then
     if (( $# % 2 == 1 )); then
-      echo "json.encode_object(): number of arguments is odd - not all keys have values" >&2
+      echo "json.encode_object_entries(): number of arguments is odd - not all keys have values" >&2
       return 1
     fi
     if [[ ${type:?} == string ]]; then
-      local -a _jeo_strings=() _jeo_obj=('{' '' '}')
+      local _jeo_strings _jeo_string_entries
       out=_jeo_strings join='' json.encode_string "$@"
-      printf -v '_jeo_obj[1]' '%s:%s,' "${_jeo_strings[@]:?}"
-      _jeo_obj[1]=${_jeo_obj[1]/%,/}
-      in='_jeo_obj' json.buffer_output
+      printf -v '_jeo_string_entries' '%s:%s,' "${_jeo_strings[@]:?}"
+      _jeo_string_entries=${_jeo_string_entries:0: ${#_jeo_string_entries} - 1 }
+      json.buffer_output "${_jeo_string_entries:?}"
       return 0
     fi
     local -A _jeo_entries=();
@@ -262,7 +271,28 @@ function json.encode_object() {
     done
   elif [[ ${entries:-} ]]; then
     local -n _jeo_entries=${entries:?}
-    local -a _jeo_keys=("${!_jeo_entries[@]}") _jeo_values=("${_jeo_entries[@]}")
+    if [[ ${#_jeo_entries[@]} == 0 ]]; then return;
+    elif [[ ${_jeo_entries@a} == *A* ]]; then  # entries is an associative array
+      local -a _jeo_keys=("${!_jeo_entries[@]}") _jeo_values=("${_jeo_entries[@]}")
+    else
+      # entries is a regular array containing complete JSON objects
+      if [[ ${type:?} != 'raw' ]]; then
+        type="${type:?}_object" in=_jeo_entries json.validate || \
+          { echo "json.encode_object_entries(): provided entries are not all" \
+            "valid JSON objects with ${type@Q} values." >&2; return 1; }
+      fi
+        local IFS='' _jeo_encoded_entries
+        # Remove the {} and whitespace surrounding the objects' entries, while
+        # appending , and immediately removing the , from empty objects, so
+        # empty objects become empty strings.
+        _jeo_encoded_entries=("${_jeo_entries[@]/%*([$' \t\n\r'])?('}')*([$' \t\n\r'])/','}")
+        _jeo_encoded_entries=("${_jeo_encoded_entries[@]/#*([$' \t\n\r'])?('{')*([$' \t\n\r'])?(',')/}")
+        _jeo_encoded_entries="${_jeo_encoded_entries[*]}"
+        if [[ ${#_jeo_encoded_entries} != 0 ]]; then
+          json.buffer_output "${_jeo_encoded_entries:0: ${#_jeo_encoded_entries} - 1 }"
+        fi
+        return
+    fi
   elif [[ ${keys:-} && ${values:-} ]]; then
     local -n _jeo_keys=${keys:?} _jeo_values=${values:?}
     if [[ ${#_jeo_keys[@]} != "${#_jeo_values[@]}" ]]; then
@@ -276,7 +306,7 @@ function json.encode_object() {
       'or the name of index arrays as $keys and $values.' >&2; return 1
   fi
 
-  if [[ ${#_jeo_keys[@]} == 0 ]]; then json.buffer_output '{}'; return; fi
+  if [[ ${#_jeo_keys[@]} == 0 ]]; then return; fi
 
   local _jeo_encoded_keys _jeo_encoded_values
   in=_jeo_keys join='' out=_jeo_encoded_keys json.encode_string  # can't fail
@@ -291,7 +321,7 @@ function json.encode_object() {
     printf -v _jeo_template '%s:%%s,' "${_jeo_encoded_keys[@]//"\\"/"\\\\"}"
   fi
   _jeo_template=${_jeo_template/%,/}  # remove the trailing comma
-  local -a _jeo_obj=('{' '' '}')
+  local -a _jeo_obj=()
   printf -v '_jeo_obj[1]' "${_jeo_template?}" "${_jeo_encoded_values[@]}"
   in='_jeo_obj' json.buffer_output
 }
@@ -398,7 +428,7 @@ function json.validate() {
 # Encode a file as a single JSON value, or JSON array of values.
 #
 # This function will stream the file contents when encoding string and raw
-# types, and when encoding arrays of any time. (However, it buffers individual
+# types, and when encoding arrays of any type. (However, it buffers individual
 # array values, so the values themselves can't be larger than memory, but the
 # overall array can be.)
 function json.encode_from_file() {

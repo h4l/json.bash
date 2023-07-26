@@ -379,63 +379,100 @@ if actual != expected:
   (( ${tests:?} == 4 * 6 ))
 }
 
-@test "json.encode_object" {
-  [[ $(type=string json.encode_object 'a b' '1 2'  c d) == '{"a b":"1 2","c":"d"}' ]]
-  [[ $(type=number json.encode_object a 1 c 2) == '{"a":1,"c":2}' ]]
-  [[ $(type=bool json.encode_object a true c false) == '{"a":true,"c":false}' ]]
-  [[ $(type=true json.encode_object a true c true) == '{"a":true,"c":true}' ]]
-  [[ $(type=false json.encode_object a false c false) == '{"a":false,"c":false}' ]]
-  [[ $(type=null json.encode_object a null c null) == '{"a":null,"c":null}' ]]
-  [[ $(type=json json.encode_object a '{"b":42}' c [1,2]) == '{"a":{"b":42},"c":[1,2]}' ]]
-  [[ $(type=raw json.encode_object a '{"b":42}' c [1,2]) == '{"a":{"b":42},"c":[1,2]}' ]]
+function assert_encode_object_entries_from_pre_encoded_entries() {
+  printf -v expected_str '%s' "${expected[@]}"
+  [[ $(type=${type:?} entries=${entries:?} json.encode_object_entries) \
+    == "${expected_str?}" ]]
+
+  local buff=()
+  type=${type:?} entries=${entries:?} out=buff json.encode_object_entries
+  assert_array_equals expected buff
+}
+
+@test "json.encode_object_entries :: from pre-encoded entries" {
+  local _entries=() expected
+
+  # No entries produce no outputs (specifically, no empty string output)
+  _entries=() expected=()
+  type=string entries=_entries assert_encode_object_entries_from_pre_encoded_entries
+
+  # Only empty objects also produce no outputs
+  _entries=('{}' '{  }' $'  \t\n\r { \t\n\r } \t\n\r ') expected=()
+  type=string entries=_entries assert_encode_object_entries_from_pre_encoded_entries
+
+  _entries=('{"a":"x"}' '{}' '{"b":"y","c":"z"}') expected=('"a":"x","b":"y","c":"z"')
+  type=string entries=_entries assert_encode_object_entries_from_pre_encoded_entries
+
+  _entries=('{}' '{"a":[{"x":true}]}' '{}' '{"b":42,"c":false}' '{}')
+  expected=('"a":[{"x":true}],"b":42,"c":false')
+  type=json entries=_entries  assert_encode_object_entries_from_pre_encoded_entries
+}
+
+@test "json.encode_object_entries" {
+  [[ $(type=string json.encode_object_entries 'a b' '1 2'  c d) == '"a b":"1 2","c":"d"' ]]
+  [[ $(type=number json.encode_object_entries a 1 c 2) == '"a":1,"c":2' ]]
+  [[ $(type=bool json.encode_object_entries a true c false) == '"a":true,"c":false' ]]
+  [[ $(type=true json.encode_object_entries a true c true) == '"a":true,"c":true' ]]
+  [[ $(type=false json.encode_object_entries a false c false) == '"a":false,"c":false' ]]
+  [[ $(type=null json.encode_object_entries a null c null) == '"a":null,"c":null' ]]
+  [[ $(type=json json.encode_object_entries a '{"b":42}' c [1,2]) == '"a":{"b":42},"c":[1,2]' ]]
+  [[ $(type=raw json.encode_object_entries a '{"b":42}' c [1,2]) == '"a":{"b":42},"c":[1,2]' ]]
 
   local k=(a b) v_str=('foo bar' 42) v_json=('{}' true)
-  [[ $(type=string keys=k values=v_str json.encode_object) == '{"a":"foo bar","b":"42"}' ]]
-  [[ $(type=json keys=k values=v_json json.encode_object) == '{"a":{},"b":true}' ]]
+  [[ $(type=string keys=k values=v_str json.encode_object_entries) == '"a":"foo bar","b":"42"' ]]
+  [[ $(type=json keys=k values=v_json json.encode_object_entries) == '"a":{},"b":true' ]]
 
   local -A kv=([a]='foo bar' [b]='bar baz')
   # order of associative array keys is not defined
-  type=string entries=kv json.encode_object \
+  { printf '{'; type=string entries=kv json.encode_object_entries; printf '}'; } \
     | compare=parsed equals_json '{a: "foo bar", b: "bar baz"}'
 
   local buff=()
-  out=buff type=string keys=k values=v_str json.encode_object
-  [[ $(printf '%s' "${buff[@]}") == '{"a":"foo bar","b":"42"}' ]]
+  out=buff type=string keys=k values=v_str json.encode_object_entries
+  [[ $(printf '%s' "${buff[@]}") == '"a":"foo bar","b":"42"' ]]
 }
 
-@test "json.encode_object :: non-errors" {
-  local things=('a b' 'c d')
-  things[5]='foo'
-  # a regular array can be used with entries — the keys are integer indexes
-  [[ $(type=string entries=things json.encode_object) == '{"0":"a b","1":"c d","5":"foo"}' ]]
+@test "json.encode_object_entries :: non-errors" {
+  # pre-encoded entries of type raw are not validated. But the braces surrounding
+  # entries are still removed, and empty values ignored without introducing commas
+  local _entries=('"a":null}' '' '"b":1' '{"foo":"bar"')
+  type=raw entries=_entries json.encode_object_entries
+  [[ $(type=raw entries=_entries json.encode_object_entries) \
+    == '"a":null,"b":1,"foo":"bar"' ]]
 }
 
-@test "json.encode_object :: errors" {
-  run json.encode_object
+@test "json.encode_object_entries :: errors" {
+  run json.encode_object_entries
   echo "$output"
   [[ $status == 1 && $output == *"\$type must be provided"* ]]
 
-  type=string run json.encode_object
+  type=string run json.encode_object_entries
   echo "$output"
   [[ $status == 1 && $output == *'inputs are not provided correctly.'* ]]
 
   local k=() v=()
   # no values specified
-  keys=k type=string run json.encode_object
+  keys=k type=string run json.encode_object_entries
   [[ $status == 1 && $output == *'inputs are not provided correctly.'* ]]
 
   # no keys specified
-  values=v type=string run json.encode_object
+  values=v type=string run json.encode_object_entries
   [[ $status == 1 && $output == *'inputs are not provided correctly.'* ]]
 
   # unequal number of keys / values
   k=(foo)
-  keys=k values=v type=string  run json.encode_object
+  keys=k values=v type=string  run json.encode_object_entries
   [[ $status == 1 && $output == *'unequal number of keys and values: 1 keys, 0 values' ]]
 
   # unequal number of keys / values via arguments
-  type=string  run json.encode_object a
+  type=string  run json.encode_object_entries a
   [[ $status == 1 && $output == *'number of arguments is odd - not all keys have values' ]]
+
+  # pre-encoded entries must be of the stated type
+  local _entries=('{"a":null}')
+  type=string entries=_entries run json.encode_object_entries
+  [[ $status == 1 && $output == "json.encode_object_entries(): provided entries \
+are not all valid JSON objects with 'string' values." ]]
 }
 
 # Verify that a json.encode_${type} function handles in & out parameters correctly
