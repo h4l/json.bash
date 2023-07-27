@@ -2043,10 +2043,10 @@ function expect_json_invalid() {
 function assert_array_equals() {
   local -n left=${1:?} right=${2:?}
   declare -p left right
-  if [[ ${left@a} != *[aA]* ]]; then
+  if [[ ! ( ${#left[@]} == 0 || ${left@a} == *[aA]* ) ]]; then
     echo "assert_array_equals: left is not an array var" >&2; return 1
   fi
-  if [[ ${right@a} != *[aA]* ]]; then
+  if [[ ! ( ${#right[@]} == 0 || ${right@a} == *[aA]* ) ]]; then
     echo "assert_array_equals: right is not an array var" >&2; return 1
   fi
 
@@ -2055,7 +2055,7 @@ function assert_array_equals() {
   }
 
   for i in "${!left[@]}"; do
-    if [[ ${left[$i]} != ${right[$i]} ]]; then
+    if [[ ${left[$i]} != "${right[$i]}" ]]; then
       echo "assert_array_equals: arrays are unequal at index ${i@Q}:" \
         "${left[$i]@Q} != ${right[$i]@Q}" >&2
       return 1
