@@ -1254,19 +1254,60 @@ val_flag_strict = '+'
 
 @test "json.parse_attributes" {
   local -A attrs expected
+  local keys values ex_keys ex_values src
 
-  attrs=(__); # bash thinks empty arrays are unbound, __ just makes it not empty
-  out=attrs json.parse_attributes ''
-  expected=(__); assert_array_equals attrs expected
+  attrs=(); out=attrs json.parse_attributes ''
+  keys=() values=(); out=keys,values json.parse_attributes ''
+  expected=(); assert_array_equals attrs expected
+  ex_keys=(); assert_array_equals keys ex_keys
+  ex_values=(); assert_array_equals values ex_values
+
 
   attrs=(); out=attrs json.parse_attributes 'a=b,c=d'
+  keys=() values=(); out=keys,values json.parse_attributes 'a=b,c=d'
   expected=([a]=b [c]=d); assert_array_equals attrs expected
+  ex_keys=(a c); assert_array_equals keys ex_keys
+  ex_values=(b d); assert_array_equals values ex_values
+
 
   attrs=(); out=attrs json.parse_attributes 'ab=c//d,e=f,,g'
+  keys=() values=(); out=keys,values json.parse_attributes 'ab=c//d,e=f,,g'
   expected=(['ab']='c/d' ['e']='f,g'); assert_array_equals attrs expected
+  ex_keys=(ab e); assert_array_equals keys ex_keys
+  ex_values=(c/d f,g); assert_array_equals values ex_values
+
 
   attrs=(); out=attrs json.parse_attributes 'a==b=c,d===e,===f'
+  keys=() values=(); out=keys,values json.parse_attributes 'a==b=c,d===e,===f'
   expected=(['a=b']='c' ['d=']='e' ['=']='f'); assert_array_equals attrs expected
+  ex_keys=(a=b d= =); assert_array_equals keys ex_keys
+  ex_values=(c e f); assert_array_equals values ex_values
+
+  # multiple input chunks with empty chunks (that are ignored)
+  attrs=(); out=attrs json.parse_attributes '' 'a=1,b=2' '' 'c=3,d=4' ''
+  keys=() values=(); out=keys,values json.parse_attributes '' 'a=1,b=2' '' 'c=3,d=4' ''
+  expected=(['a']='1' ['b']='2' ['c']='3' ['d']='4'); assert_array_equals attrs expected
+  ex_keys=(a b c d); assert_array_equals keys ex_keys
+  ex_values=(1 2 3 4); assert_array_equals values ex_values
+
+  # Input from array
+  src=('' 'a=1,b=2' '' 'c=3,d=4' '')
+  attrs=(); out=attrs in=src json.parse_attributes
+  keys=() values=(); out=keys,values in=src json.parse_attributes
+  expected=(['a']='1' ['b']='2' ['c']='3' ['d']='4'); assert_array_equals attrs expected
+  ex_keys=(a b c d); assert_array_equals keys ex_keys
+  ex_values=(1 2 3 4); assert_array_equals values ex_values
+
+  # Alternate reserved char
+  # / is reserved by default as it's reserved when parsing attrs from arguments.
+  # But we can use a different char if we know it won't occur. e.g. if chunks
+  # were split on newlines, that must not occur. This char is used internally
+  # to escape = and , when parsing.
+  keys=() values=(); out=keys,values reserved=! json.parse_attributes \
+    'a!!b==c=1!!2,,3,d=4' 'e,,f==g!!h=5,i=6'
+  declare -p keys values ex_keys ex_values
+  ex_keys=('a!b=c' 'd' 'e,f=g!h' 'i'); assert_array_equals keys ex_keys
+  ex_values=('1!2,3' '4' '5' '6'); assert_array_equals values ex_values
 }
 
 # Assert JSON on stdin matches JSON given as the first argument.
@@ -2079,7 +2120,6 @@ function expect_json_invalid() {
 
 function assert_array_equals() {
   local -n left=${1:?} right=${2:?}
-  declare -p left right
   if [[ ! ( ${#left[@]} == 0 || ${left@a} == *[aA]* ) ]]; then
     echo "assert_array_equals: left is not an array var" >&2; return 1
   fi
@@ -2087,7 +2127,7 @@ function assert_array_equals() {
     echo "assert_array_equals: right is not an array var" >&2; return 1
   fi
 
-  diff -u <(printf '%s\n' "${!left[@]}") <(printf '%s\n' "${!right[@]}") || {
+  diff -u <(printf '%s\n' "${!left[@]}" | sort) <(printf '%s\n' "${!right[@]}" | sort) || {
     echo "assert_array_equals: arrays have different keys" >&2; return 1
   }
 

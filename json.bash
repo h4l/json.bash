@@ -668,31 +668,53 @@ function json._parse_argument2() {
   fi
 }
 
+# Parse the attribute syntax used in argument /a=b,c=d/ attributes.
 function json.parse_attributes() {
-  local -n _jpa2_out=${out:?"\$out must name an Associative Array to hold parsed attributes"}
-  local _jpa_attrskv=${1?} _jpa_attrsk=() _jpa_attrsv=() IFS
+  local _jpa_attrskv=() _jpa_attrsk=() _jpa_attrsv=() _r=${reserved:-/} IFS=','
 
-  if [[ ${_jpa_attrskv?} =~ ('//'|',,'|'==') ]]; then
-    _jpa_attrskv=${_jpa_attrskv//,,/'\/1'}  # Re-escape escapes so we can use , and = unambiguously.
-    _jpa_attrskv=${_jpa_attrskv//==/'\/2'}  # We make use of / in this temporary escape sequence, as / must be escaped as //
+  if [[ $# != 0 ]]; then local _jpa_in=("$@");
+  else local -n _jpa_in=${in:?"json.parse_attributes: \$in must be set when no arguments are provided"}; fi
 
-    IFS=,; _jpa_attrskv=(${_jpa_attrskv})             # Split on commas
-    _jpa_attrskv=("${_jpa_attrskv[@]//'\/1'/,}")      # Restore ,, escapes as ,
-    _jpa_attrsk=("${_jpa_attrskv[@]/%=*/}")           # Remove =value suffix to get key
-    _jpa_attrsv=("${_jpa_attrskv[@]/#*([^=])?(=)/}")  # Remove key= prefix to get value
+  if [[ ${#_r} != 1 || $_r == [=,] ]]; then
+    echo "json.parse_attributes: \$reserved must be a single char other" \
+      "than '=' ',' or — ${_r@Q}" >&2; return 1
+  fi
 
-    _jpa_attrsk=("${_jpa_attrsk[@]//'\/2'/'='}")   # Restore == escapes as =
-    _jpa_attrsv=("${_jpa_attrsv[@]//'\/2'/'=='}")  # Restore == escapes as == (values don't need to escape =, so == is ==).
-    _jpa_attrsv=("${_jpa_attrsv[@]//'//'/'/'}")    # Apply // escapes as /
-  elif [[ ${_jpa_attrskv?} ]]; then
-    IFS=,; _jpa_attrskv=(${_jpa_attrskv})             # Split on commas
+  if [[ ${_jpa_in[*]?} =~ ("${_r:?}${_r:?}"|',,'|'==') ]]; then
+    _jpa_attrskv=("${_jpa_in[@]//,,/"\\${_r:?}1"}")  # Re-escape escapes so we can use , and = unambiguously.
+    _jpa_attrskv=("${_jpa_attrskv[@]//==/"\\${_r:?}2"}")  # We make use of / in this temporary escape sequence, as / must be escaped as //
+    # To remove empty inputs, we normalise commas by adding one at the start and
+    # compressing repeated commas into one.
+    _jpa_attrskv=",${_jpa_attrskv[*]},"                  # join on ','
+    _jpa_attrskv=(${_jpa_attrskv//+(',')/,})             # split on (1 or more) commas
+    _jpa_attrskv=("${_jpa_attrskv[@]//"\\${_r:?}1"/,}")  # Restore ,, escapes as ,
+    _jpa_attrsk=("${_jpa_attrskv[@]/%=*/}")              # Remove =value suffix to get key
+    _jpa_attrsv=("${_jpa_attrskv[@]/#*([^=])?(=)/}")     # Remove key= prefix to get value
+
+    _jpa_attrsk=("${_jpa_attrsk[@]//"\\${_r:?}2"/'='}")   # Restore == escapes as =
+    _jpa_attrsv=("${_jpa_attrsv[@]//"\\${_r:?}2"/'=='}")  # Restore == escapes as == (values don't need to escape =, so == is ==).
+    _jpa_attrsk=("${_jpa_attrsk[@]//"${_r:?}${_r:?}"/"${_r:?}"}")    # Apply // escapes as /
+    _jpa_attrsv=("${_jpa_attrsv[@]//"${_r:?}${_r:?}"/"${_r:?}"}")    # Apply // escapes as /
+  else
+    _jpa_attrskv=",${_jpa_in[*]},"                    # join on ','
+    _jpa_attrskv=(${_jpa_attrskv//+(',')/,})          # split on (1 or more) commas
     _jpa_attrsk=("${_jpa_attrskv[@]/%=*/}")           # Remove =value suffix to get key
     _jpa_attrsv=("${_jpa_attrskv[@]/#*([^=])?(=)/}")  # Remove key= prefix to get value
   fi
-  # Handle the split attributes from either of the previous 2 cases
-  for i in "${!_jpa_attrsk[@]}"; do
-    _jpa2_out["${_jpa_attrsk["$i"]:-__empty__}"]=${_jpa_attrsv["$i"]}
-  done
+
+  # Handle the split attributes from either of the previous 2 cases, either
+  # output separate key and value arrays, or a merged associative array.
+  # Note that the first index is always the empty string due to , normalisation.
+  case "${out:?"\$out must name an Associative Array to hold parsed attributes"}" in
+  (*?,?*)
+    local -n _jpa2_outk=${out%,*} _jpa2_outv=${out#*,}
+    _jpa2_outk+=("${_jpa_attrsk[@]:1}") _jpa2_outv+=("${_jpa_attrsv[@]:1}") ;;
+  (*)
+    local -n _jpa2_out=${out:?}
+    for ((i=1; i < ${#_jpa_attrsk[@]}; ++i )); do
+      _jpa2_out["${_jpa_attrsk["$i"]:-__empty__}"]=${_jpa_attrsv["$i"]}
+    done ;;
+  esac
 }
 
 # Parse a json argument expression into attributes in an associative array.
