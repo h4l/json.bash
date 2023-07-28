@@ -454,20 +454,28 @@ function json.validate() {
 # array values, so the values themselves can't be larger than memory, but the
 # overall array can be.)
 function json.encode_from_file() {
-  case "${type:?}_${array:-}" in
+  # TODO: remove backwards compat
+  if [[ ${array:-} == true ]]; then collection=array; fi
+
+  case "${type:?}_${collection:-}" in
   # There's not much point in implementing json.stream_encode_json() because
   # grep (which evaluates the validation regex) buffers the entire input in
   # memory while matching, despite not needing to backtrack or output the match.
-  (@(string|number|bool|true|false|null|auto|raw|json)_true)
+  (@(string|number|bool|true|false|null|auto|raw|json)_array)
     json.buffer_output '['
     json.stream_encode_array_entries || return $?
-    json.buffer_output ']'  ;;
+    json.buffer_output ']'                                                    ;;
+  (@(string|number|bool|true|false|null|auto|raw|json)_object)
+    json.buffer_output '{'
+    json.stream_encode_object_entries || return $?
+    json.buffer_output '}'                                                    ;;
   (@(string|raw)_*)
-    "json.stream_encode_${type:?}" || return $? ;;
+    "json.stream_encode_${type:?}" || return $?                               ;;
   (@(number|bool|true|false|null|auto|json)_*)
-    json.encode_value_from_file || return $? ;;
+    json.encode_value_from_file || return $?                                  ;;
   (*)
-    echo "json.encode_from_file(): unsupported type: ${type@Q}" >&2; return 1 ;;
+    echo "json.encode_from_file(): unsupported type, collection combination:" \
+      "${type@Q}, ${collection@Q}" >&2; return 1                              ;;
   esac
 }
 

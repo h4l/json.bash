@@ -733,20 +733,56 @@ function get_array_encode_examples() {
   for type in "${example_names[@]:?}"; do
     # output to stdout
     cb_count=0
-    array=true split=$'\n' out_cb=_increment_cb_count json.encode_from_file \
+    collection=array split=$'\n' out_cb=_increment_cb_count json.encode_from_file \
       < <(echo -n "${examples["${type:?}_in"]}" ) > "${tmp:?}"
-    echo -n "[${examples[${type:?}_out]:?}]" | diff - "${tmp:?}"
-    echo "${cb_count@Q}"
+    diff <(echo -n "[${examples[${type:?}_out]:?}]") "${tmp:?}"
     [[ $cb_count == 2 ]]
 
     # output to array
     buff=() cb_count=0
-    out=buff array=true split=$'\n' out_cb=_increment_cb_count \
+    out=buff collection=array split=$'\n' out_cb=_increment_cb_count \
       json.encode_from_file < <(echo -n "${examples["${type:?}_in"]}" )
     printf -v actual '%s' "${buff[@]}"
     [[ "${actual:?}" == "[${examples[${type:?}_out]:?}]" ]]
     [[ $cb_count == 2 ]]
   done
+}
+
+function get_object_encode_examples() {
+  example_names=(string number)
+  format_names=(json attrs)
+  examples+=(
+    [json_string_in]=$'{"a b":"c d","e":"f"}\n{"":""}\n{"g":"h"}\n{}\n'
+    [attrs_string_in]=$'a b=c d,e=f\n=\ng=h\n\n'
+    [string_out]='"a b":"c d","e":"f","":"","g":"h"'
+
+    [json_number_in]=$'{"a":1}\n{"b":2}\n{"c":3}\n'
+    [attrs_number_in]=$'a=1\nb=2\nc=3\n'
+    [number_out]=$'"a":1,"b":2,"c":3'
+  )
+}
+
+@test "json.encode_from_file :: object" {
+  local json_buffered_chunk_count=2 cb_count
+  local tmp=$(mktemp_bats)  # can't use run because we need to see callbacks
+  local example_names format_names; local -A examples; get_object_encode_examples
+
+  for type in "${example_names[@]:?}"; do
+  for format in "${format_names[@]:?}"; do
+    # output to stdout
+    cb_count=0
+    collection=object split=$'\n' out_cb=_increment_cb_count json.encode_from_file \
+      < <(echo -n "${examples["${format:?}_${type:?}_in"]}" ) > "${tmp:?}" 2>&1
+    diff <(echo -n "{${examples[${type:?}_out]:?}}") "${tmp:?}"
+    [[ $cb_count == 2 ]]
+
+    # output to array
+    buff=() cb_count=0
+    out=buff collection=object split=$'\n' out_cb=_increment_cb_count \
+      json.encode_from_file < <(echo -n "${examples["${format:?}_${type:?}_in"]}" )
+    diff <(printf '%s' "${buff[@]}") <(echo -n "{${examples[${type:?}_out]:?}}")
+    [[ $cb_count == 2 ]]
+  done done
 }
 
 @test "json.stream_encode_array_entries :: stops reading file on error" {
