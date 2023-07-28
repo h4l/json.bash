@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2120
 shopt -s extglob # required to match our auto glob patterns
 
 JSON_BASH_VERSION=0.1.0
@@ -535,7 +536,7 @@ function json.__jsea_on_chunks_available() {
     return
   fi
   _jsea_raw_chunks=()
-  : ${_jsea_separator:=,} # separate chunks with , after the first write
+  : "${_jsea_separator:=,}" # separate chunks with , after the first write
   "${out_cb:-:}" # call the out_cb, if provided
 }
 
