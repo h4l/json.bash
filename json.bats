@@ -381,31 +381,31 @@ if actual != expected:
 
 function assert_encode_object_entries_from_pre_encoded_entries() {
   printf -v expected_str '%s' "${expected[@]}"
-  [[ $(type=${type:?} entries=${entries:?} json.encode_object_entries) \
+  [[ $(type=${type:?} in=${in:?} json.encode_object_entries) \
     == "${expected_str?}" ]]
 
   local buff=()
-  type=${type:?} entries=${entries:?} out=buff json.encode_object_entries
+  type=${type:?} in=${in:?} out=buff json.encode_object_entries
   assert_array_equals expected buff
 }
 
 @test "json.encode_object_entries :: from pre-encoded entries" {
-  local _entries=() expected
+  local entries=() expected
 
   # No entries produce no outputs (specifically, no empty string output)
-  _entries=() expected=()
-  type=string entries=_entries assert_encode_object_entries_from_pre_encoded_entries
+  entries=() expected=()
+  type=string in=entries assert_encode_object_entries_from_pre_encoded_entries
 
   # Only empty objects also produce no outputs
-  _entries=('{}' '{  }' $'  \t\n\r { \t\n\r } \t\n\r ') expected=()
-  type=string entries=_entries assert_encode_object_entries_from_pre_encoded_entries
+  entries=('{}' '{  }' $'  \t\n\r { \t\n\r } \t\n\r ') expected=()
+  type=string in=entries assert_encode_object_entries_from_pre_encoded_entries
 
-  _entries=('{"a":"x"}' '{}' '{"b":"y","c":"z"}') expected=('"a":"x","b":"y","c":"z"')
-  type=string entries=_entries assert_encode_object_entries_from_pre_encoded_entries
+  entries=('{"a":"x"}' '{}' '{"b":"y","c":"z"}') expected=('"a":"x","b":"y","c":"z"')
+  type=string in=entries assert_encode_object_entries_from_pre_encoded_entries
 
-  _entries=('{}' '{"a":[{"x":true}]}' '{}' '{"b":42,"c":false}' '{}')
+  entries=('{}' '{"a":[{"x":true}]}' '{}' '{"b":42,"c":false}' '{}')
   expected=('"a":[{"x":true}],"b":42,"c":false')
-  type=json entries=_entries  assert_encode_object_entries_from_pre_encoded_entries
+  type=json in=entries  assert_encode_object_entries_from_pre_encoded_entries
 }
 
 @test "json.encode_object_entries" {
@@ -419,16 +419,16 @@ function assert_encode_object_entries_from_pre_encoded_entries() {
   [[ $(type=raw json.encode_object_entries a '{"b":42}' c [1,2]) == '"a":{"b":42},"c":[1,2]' ]]
 
   local k=(a b) v_str=('foo bar' 42) v_json=('{}' true)
-  [[ $(type=string keys=k values=v_str json.encode_object_entries) == '"a":"foo bar","b":"42"' ]]
-  [[ $(type=json keys=k values=v_json json.encode_object_entries) == '"a":{},"b":true' ]]
+  [[ $(type=string in=k,v_str json.encode_object_entries) == '"a":"foo bar","b":"42"' ]]
+  [[ $(type=json in=k,v_json json.encode_object_entries) == '"a":{},"b":true' ]]
 
   local -A kv=([a]='foo bar' [b]='bar baz')
   # order of associative array keys is not defined
-  { printf '{'; type=string entries=kv json.encode_object_entries; printf '}'; } \
+  { printf '{'; type=string in=kv json.encode_object_entries; printf '}'; } \
     | compare=parsed equals_json '{a: "foo bar", b: "bar baz"}'
 
   local buff=()
-  out=buff type=string keys=k values=v_str json.encode_object_entries
+  out=buff type=string in=k,v_str json.encode_object_entries
   [[ $(printf '%s' "${buff[@]}") == '"a":"foo bar","b":"42"' ]]
 }
 
@@ -444,42 +444,36 @@ function assert_encode_object_entries_from_pre_encoded_entries() {
 @test "json.encode_object_entries :: non-errors" {
   # pre-encoded entries of type raw are not validated. But the braces surrounding
   # entries are still removed, and empty values ignored without introducing commas
-  local _entries=('"a":null}' '' '"b":1' '{"foo":"bar"')
-  type=raw entries=_entries json.encode_object_entries
-  [[ $(type=raw entries=_entries json.encode_object_entries) \
+  local entries=('"a":null}' '' '"b":1' '{"foo":"bar"')
+  type=raw in=entries json.encode_object_entries
+  [[ $(type=raw in=entries json.encode_object_entries) \
     == '"a":null,"b":1,"foo":"bar"' ]]
 }
 
 @test "json.encode_object_entries :: errors" {
   run json.encode_object_entries
-  echo "$output"
   [[ $status == 1 && $output == *"\$type must be provided"* ]]
 
   type=string run json.encode_object_entries
-  echo "$output"
-  [[ $status == 1 && $output == *'inputs are not provided correctly.'* ]]
+  [[ $status == 1 && $output == *'$in must be set if arguments are not provided' ]]
 
   local k=() v=()
   # no values specified
-  keys=k type=string run json.encode_object_entries
-  [[ $status == 1 && $output == *'inputs are not provided correctly.'* ]]
-
-  # no keys specified
-  values=v type=string run json.encode_object_entries
-  [[ $status == 1 && $output == *'inputs are not provided correctly.'* ]]
+  in=k, type=string run json.encode_object_entries
+  [[ $status == 1 && $output == *"k,': invalid variable name for name reference"* ]]
 
   # unequal number of keys / values
   k=(foo)
-  keys=k values=v type=string  run json.encode_object_entries
+  in=k,v type=string  run json.encode_object_entries
   [[ $status == 1 && $output == *'unequal number of keys and values: 1 keys, 0 values' ]]
 
   # unequal number of keys / values via arguments
-  type=string  run json.encode_object_entries a
+  type=string run json.encode_object_entries a
   [[ $status == 1 && $output == *'number of arguments is odd - not all keys have values' ]]
 
   # pre-encoded entries must be of the stated type
-  local _entries=('{"a":null}')
-  type=string entries=_entries run json.encode_object_entries
+  local entries=('{"a":null}')
+  type=string in=entries run json.encode_object_entries
   [[ $status == 1 && $output == "json.encode_object_entries(): provided entries \
 are not all valid JSON objects with 'string' values." ]]
 }

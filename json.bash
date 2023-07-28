@@ -245,9 +245,9 @@ $(printf " %s" "${_jej_in[@]@Q}")" >&2
 #
 # Entries are created from one of:
 #  - positional arguments: key1, value1, key2, value2...
-#  - $entries naming an associative array of key, value pairs
-#  - $entries naming an indexed array of pre-encoded JSON objects
-#  - $keys $values naming indexed arrays of equal length, containing the keys
+#  - in=foo naming an associative array of key, value pairs
+#  - in=foo naming an indexed array of pre-encoded JSON objects
+#  - in=foo,bar naming two indexed arrays of equal length, containing the keys
 #    and values
 # $type is the type of each entry's value. Input values must be valid for this
 # type — pre-encoded entries are validated to be JSON objects holding values of
@@ -274,8 +274,17 @@ function json.encode_object_entries() {
     local i j; for ((i=1; i<=$#; i+=2)); do
       j=$((i+1)); _jeo_keys+=("${!i?}") _jeo_values+=("${!j?}")
     done
-  elif [[ ${entries:-} ]]; then
-    local -n _jeo_entries=${entries:?}
+  else case "${in:?"json.encode_object_entries(""): \$in must be set if arguments are not provided"}" in
+  (*?,?*)
+    local -n _jeo_keys=${in%,*} _jeo_values=${in#*,}
+    if [[ ${#_jeo_keys[@]} != "${#_jeo_values[@]}" ]]; then
+      echo "json.encode_objects(): unequal number of keys and values:" \
+        "${#_jeo_keys[@]} keys, ${#_jeo_values[@]} values" >&2
+      return 1
+    fi
+    ;;
+  (*)
+    local -n _jeo_entries=${in:?}
     if [[ ${#_jeo_entries[@]} == 0 ]]; then return;
     elif [[ ${_jeo_entries@a} == *A* ]]; then  # entries is an associative array
       local -a _jeo_keys=("${!_jeo_entries[@]}") _jeo_values=("${_jeo_entries[@]}")
@@ -298,18 +307,8 @@ function json.encode_object_entries() {
         fi
         return
     fi
-  elif [[ ${keys:-} && ${values:-} ]]; then
-    local -n _jeo_keys=${keys:?} _jeo_values=${values:?}
-    if [[ ${#_jeo_keys[@]} != "${#_jeo_values[@]}" ]]; then
-      echo "json.encode_objects(): unequal number of keys and values:" \
-        "${#_jeo_keys[@]} keys, ${#_jeo_values[@]} values" >&2
-      return 1
-    fi
-  else
-    echo 'json.encode_object(): inputs are not provided correctly. Pass an' \
-      'even number of arguments, the name of an associative array as $entries' \
-      'or the name of index arrays as $keys and $values.' >&2; return 1
-  fi
+  ;;
+  esac fi
 
   if [[ ${#_jeo_keys[@]} == 0 ]]; then return; fi
 
@@ -332,7 +331,7 @@ function json.encode_object_entries() {
 }
 
 function json.encode_object_entries_from_json() {
-  entries=${in:?} keys='' values='' json.encode_object_entries
+  in=${in:?} out=${out?} json.encode_object_entries
 }
 
 function json.encode_object_entries_from_attrs() {
@@ -346,7 +345,7 @@ function json.encode_object_entries_from_attrs() {
   fi
   in=${in:?} out=_jeoefa_keys,_jeoefa_values reserved=${split:?} \
     json.parse_attributes
-  entries='' keys=_jeoefa_keys values=_jeoefa_values json.encode_object_entries
+  in=_jeoefa_keys,_jeoefa_values out=${out?} json.encode_object_entries
 }
 
 function json.start_json_validator() {
