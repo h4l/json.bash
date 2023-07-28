@@ -432,6 +432,15 @@ function assert_encode_object_entries_from_pre_encoded_entries() {
   [[ $(printf '%s' "${buff[@]}") == '"a":"foo bar","b":"42"' ]]
 }
 
+@test "json.encode_object_entries :: escapes" {
+  # When encoding from separate key value arrays, the implementation uses printf
+  # to consume bash arrays without running bash ops for each array element. This
+  # has the potential to mangle data if we don't escape format strings correctly
+  local buff
+  buff=(); out=buff type=string json.encode_object_entries $'a\nb\x10c' $'d\te\x01f'
+  [[ $(printf '%s' "${buff[@]}") == '"a\nb\u0010c":"d\te\u0001f"' ]]
+}
+
 @test "json.encode_object_entries :: non-errors" {
   # pre-encoded entries of type raw are not validated. But the braces surrounding
   # entries are still removed, and empty values ignored without introducing commas
@@ -807,6 +816,80 @@ function get_array_encode_examples() {
 
   local expected=('[' '"a","b"' ',' '"c","d"' ',' '"e","f"' ',' '"g"' ']')
   assert_array_equals expected buff
+}
+
+@test "json.stream_encode_object_entries :: errors" {
+  local buff json_buffered_chunk_count=2 expected=()
+
+  # No format
+  out=buff type=number split=$'\n' run json.stream_encode_object_entries \
+    < <(printf '')
+  [[ $status == 1 && $output == "json.stream_encode_object_entries: requested format does not exist — ''" ]]
+
+  # Invalid format
+  out=buff type=number split=$'\n' format=qwerty run json.stream_encode_object_entries \
+    < <(printf '')
+  [[ $status == 1 && $output == "json.stream_encode_object_entries: requested format does not exist — 'qwerty'" ]]
+
+  # Invalid type
+  out=buff type=qwerty split=$'\n' format=json run json.stream_encode_object_entries \
+    < <(printf '{}')
+  echo "${output:?}"
+  [[ $status == 1 && $output == *"json.validate: unsupported \$type: 'qwerty_object'" ]]
+}
+
+@test "json.stream_encode_object_entries" {
+  local buff json_buffered_chunk_count=2 expected=()
+
+  # Empty input file
+  buff=() expected=()
+  out=buff type=number format=json split=$'\n' json.stream_encode_object_entries \
+    < <(printf '')
+  assert_array_equals buff expected
+
+  out='' type=number format=json split=$'\n' run json.stream_encode_object_entries \
+    < <(printf '')
+  [[ $output == '' ]]
+
+  # 4 input chunks, handling 2 chunks per callback
+  buff=() expected=('"a":1,"b":2,"c":3,"d":4' ',' '"e":5,"e":6,"g":7,"h":8')
+  out=buff type=number format=json split=$'\n' json.stream_encode_object_entries \
+    <<<$'{"a":1,"b":2}\n{"c":3,"d":4}\n{"e":5,"e":6}\n{"g":7,"h":8}'
+  assert_array_equals buff expected
+
+  out='' type=number format=json split=$'\n' run json.stream_encode_object_entries \
+    <<<$'{"a":1,"b":2}\n{"c":3,"d":4}\n{"e":5,"e":6}\n{"g":7,"h":8}'
+  [[ $output == "$(printf '%s' "${expected[@]}")" ]]
+
+  # 1 chunk per callback
+  json_buffered_chunk_count=1
+  buff=() expected=('"a":1,"b":2' ',' '"c":3,"d":4' ',' '"e":5,"e":6' ',' '"g":7,"h":8')
+  out=buff type=number format=json split=$'\n' json.stream_encode_object_entries \
+    <<<$'{"a":1,"b":2}\n{"c":3,"d":4}\n{"e":5,"e":6}\n{"g":7,"h":8}'
+  assert_array_equals buff expected
+
+  # default chunk counts
+  json_buffered_chunk_count=''
+  buff=() expected=('"a":1,"b":2,"c":3,"d":4,"e":5,"e":6,"g":7,"h":8')
+  out=buff type=number format=json split=$'\n' json.stream_encode_object_entries \
+    <<<$'{"a":1,"b":2}\n{"c":3,"d":4}\n{"e":5,"e":6}\n{"g":7,"h":8}'
+  assert_array_equals buff expected
+}
+
+@test "json.stream_encode_object_entries :: attrs format" {
+  local buff json_buffered_chunk_count=2
+  buff=() expected=('"a":1,"b":2,"c":3,"d":4' ',' '"e":5,"f":6,"g":7,"h":8')
+  out=buff type=number format=attrs split=$'\n' json.stream_encode_object_entries \
+    <<<$'a=1,b=2\nc=3,d=4\ne=5,f=6\ng=7,h=8'
+  assert_array_equals buff expected
+
+  # When using null-terminated chunks, no split char is reserved, so 0x10 Data
+  # Link Escape is chosen to be the character used to escape when parsing. 0x10
+  # is escaped before parsing, so it should be able to occur as normal in inputs
+  buff=() expected=('"foo\u0010bar":"x","a":"b\u0010\u0010c","\u0010=\u0010":"\u0010,\u0010"')
+  out=buff type=string format=attrs split='' json.stream_encode_object_entries \
+    < <(printf 'foo\x10bar=x,a=b\x10\x10c\x00'; printf '\x10==\x10=\x10,,\x10\x00')
+  assert_array_equals buff expected
 }
 
 @test "json file input trailing newline handling" {

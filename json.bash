@@ -36,6 +36,10 @@ declare -gA _json_bash_validation_types=(
   ['json_object']='Oj' ['string_object']='Os' ['number_object']='On' ['bool_object']='Ob' ['true_object']='Ot' ['false_object']='Of' ['null_object']='Oz'
   ['json_array']='Aj' ['string_array']='As' ['number_array']='An' ['bool_array']='Ab' ['true_array']='At' ['false_array']='Af' ['null_array']='Az'
 )
+declare -gA _json_bash_entry_formats=(
+  ['json']='json.encode_object_entries_from_json'
+  ['attrs']='json.encode_object_entries_from_attrs'
+)
 declare -gA _json_bash_escapes=(
                      [$'\x01']='\u0001' [$'\x02']='\u0002' [$'\x03']='\u0003'
   [$'\x04']='\u0004' [$'\x05']='\u0005' [$'\x06']='\u0006' [$'\x07']='\u0007'
@@ -327,6 +331,24 @@ function json.encode_object_entries() {
   in='_jeo_obj' json.buffer_output
 }
 
+function json.encode_object_entries_from_json() {
+  entries=${in:?} keys='' values='' json.encode_object_entries
+}
+
+function json.encode_object_entries_from_attrs() {
+  local _jeoefa_keys=() _jeoefa_values=() split=${split:-} in=${in:?}
+  # $split is the char used to split file chunks, so this shouldn't occur in the
+  # input, and so can be used to escape when parsing. Otherwise use RecordSeparator.
+  if [[ ! ${split?} ]]; then
+    split=$'\x10' # Data Link Escape — probably not used, but escape regardless
+    local -n _jeoefa_in=${in:?}
+    local _jeoefa_chunks=("${_jeoefa_in[@]//$'\x10'/$'\x10\x10'}") in=_jeoefa_chunks
+  fi
+  in=${in:?} out=_jeoefa_keys,_jeoefa_values reserved=${split:?} \
+    json.parse_attributes
+  entries='' keys=_jeoefa_keys values=_jeoefa_values json.encode_object_entries
+}
+
 function json.start_json_validator() {
   if [[ ${_json_validator_pids[$$]:-} != "" ]]; then return 0; fi
 
@@ -538,6 +560,47 @@ function json.__jsea_on_chunks_available() {
   _jsea_raw_chunks=()
   : "${_jsea_separator:=,}" # separate chunks with , after the first write
   "${out_cb:-:}" # call the out_cb, if provided
+}
+
+function json.stream_encode_object_entries() {
+  local format=${format:-}
+  [[ ${_json_bash_entry_formats["${format:-_}"]:-} ]] \
+    || { echo "json.stream_encode_object_entries: requested format does not exist — ${format@Q}" >&2; return 1; }
+  local _jseoe_raw_chunks=() _jseoe_encoded_chunks=() _jseoe_caller_out=${out:-} \
+    _jseoe_last_emit=4294967295 _jseoe_buff=() _jseoe_error='' \
+    _jseoe_encode_entries_fn=${_json_bash_entry_formats["${format:-_}"]:?"\
+json.stream_encode_object_entries: requested format does not exist — ${format@Q}"}
+
+  readarray -t -d "${split?}" -C json._jseoe_encode_chunks \
+    -c "${json_buffered_chunk_count:-1024}" _jseoe_raw_chunks
+
+  if [[ $_jseoe_error ]]; then return 1; fi
+  unset "_jseoe_raw_chunks[$_jseoe_last_emit]"
+  if [[ ${#_jseoe_raw_chunks[@]} != 0 ]]; then
+    local _jseoe_indexes=("${!_jseoe_raw_chunks[@]}")
+    json._jseoe_encode_chunks \
+      "${_jseoe_indexes[-1]}" "${_jseoe_raw_chunks[-1]}"
+    if [[ $_jseoe_error ]]; then return 1; fi
+  fi
+}
+
+function json._jseoe_encode_chunks() {
+  local _jseoe_encoded=()
+  unset "_jseoe_raw_chunks[$_jseoe_last_emit]"
+  _jseoe_raw_chunks["${1:?}"]=$2 _jseoe_last_emit=$1
+  if ! out=_jseoe_buff in=_jseoe_raw_chunks "${_jseoe_encode_entries_fn:?}"; then
+    # readarray ignores our exit status, but we can force it to stop by closing
+    # stdin, which it's reading.
+    exec 0<&-  # close stdin
+    _jseoe_error=true
+    return
+  fi
+  _jseoe_raw_chunks=()
+  if [[ ${#_jseoe_buff[@]} != 0 && ${_jseoe_buff[-1]:-} != ',' ]]; then
+    out=${_jseoe_caller_out?} in=_jseoe_buff json.buffer_output
+    "${out_cb:-:}" # call the out_cb, if provided
+    _jseoe_buff=(',') # separate chunks with , after the first write
+  fi
 }
 
 # Signal failure to output JSON data.
