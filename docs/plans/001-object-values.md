@@ -78,6 +78,23 @@ Two types of inputs:
   - Two Bash indexed arrays of keys and values
   - Positional arguments of alternating key, value pairs
 
+`json.encode_object_entries_from_${format}`
+
+`$format` defines how user-provided values are mapped to inputs for
+`json.encode_object_entries` to consume. As with arrays, inputs are split into
+chunks, by default by line.
+
+There are two formats:
+
+- `json` — JSON objects — entries are the entries of the object (after type)
+- `attrs` — key=value attributes — using the same format as the attributes in
+  our argument syntax.
+
+These functions receive an array of chunks named by `$in` and call
+`json.encode_object_entries` with the entries resulting from decoding the
+chunks. `$out` controls the output location and `$type` the type of the entry
+values, as normal.
+
 <!-- TODO: do we need this? -->
 
 `json.encode_object()`
@@ -88,12 +105,13 @@ A simple wrapper around `json.encode_object_entries` that wraps the entries in
 `json.stream_encode_object_entries()`
 
 Same output behaviour as `json.encode_object_entries`, but with input streamed
-from a file. Can be implemented as multiple `json.encode_object_entries` calls.
+from a file. File chunks are decoded according to `$format`. Can be implemented
+as multiple `json.encode_object_entries_from_${format}` calls.
 
 Inputs:
 
-- Separate key and value files, corresponding to key and value arrays
-- Single file of pre-encoded JSON objects
+- File of pre-encoded JSON object chunks
+- File of key=value attribute chunks
 
 ### Changes
 
@@ -119,22 +137,25 @@ wrap the output in brackets.
 `{}` arguments are used in two ways: as regular object properties, and as the
 subject of the `...` splat operator.
 
+#### Formats
+
+Object arguments are interpreted with a _format_, which defines how values are
+mapped to object entries. The default format can be changed using `{:format}`
+syntax, or `{S:format}` where `S` is the char to split inputs into chunks on
+(default: `\n`). Formats are `:json` and `:attr`.
+
 #### `{}` without splat
 
 The `{}` modifier allows objects to be created from entries. Sources of entries
-are Bash associative arrays, or pre-encoded JSON objects, whose entries are
-extracted and merged.
+are Bash associative arrays, or chunks which are decoded into object entries
+according to the argument's _format_.
 
-- `@/file` references are newline-separated JSON objects, whose entries are
-  stream-encoded.
+- `@/file` references split into chunks (like `[]` array arguments) and
+  stream-encoded into entries according to the argument's format.
 - `@var` references are handled according to variable type:
-  - Associative arrays are key, value entries
-  - Indexed arrays are pre-encoded JSON objects, as with file references
-  - string values are treated like `=` inline values
+  - Associative arrays' key, value entries are used as-is as
+  - Indexed arrays are treated like chunks from a file
 - `=` inline values string values are treated like the contents of file refs
-
-Note that arrays of keys and values cannot be used with this method. `...` splat
-refs support them instead.
 
 The `:type` of a `{}` argument defines the type of the object's entries, so
 `:number{}` is a property containing a JSON object with number values.
@@ -144,27 +165,23 @@ The `:type` of a `{}` argument defines the type of the object's entries, so
 The `...` operator, when used in a `json` call with `json_return=object`
 automatically implies the `{}` modifier. An argument using `...` `{}` creates
 object entries, which are inserted directly into the object created by the
-`json` call, (instead of into a child object, as with a non-splat `{}`
+`json` call, (instead of creating a child object, as with a non-splat `{}`
 argument).
 
-Sources of entries are are a pair of key, value sequences, Bash associative
-arrays, or pre-encoded JSON objects, whose entries are extracted and merged.
+When a splat argument uses array variable references in both the key and value
+position, they must be equal lengths and are used as keys and values for the
+object's entries.
 
-Arguments are interpreted differently when a single value is used, vs two values
-in the key and value position:
-
-- Two values: The values in the key and value position are treated as arrays are
-  — split into multiple values using the `split` attribute, and then the
-  resulting key and value sequences are used to create object entries.
-- Single value: The single value is treated in the same way as a non-splat `{}`
-  argument. The resulting object's entries are inserted ito the parent object.
+Otherwise, arguments are interpreted in the same way as non-splat object
+arguments.
 
 #### Examples
 
 `{}` without splat:
 
 ```Console
-$ # Bash interface — entries from pre-encoded objects
+$ # Bash interface — entries from pre-encoded objects. Files and variables use
+$ # `{:json}` format by default
 $ entries=('{"a":1,"b":2}' '{}' '{"c":3}')
 $ json @entries:number{}  # using a type validates the object values
 {"entries":{"a":1,"b":2,"c":3}}
@@ -177,7 +194,10 @@ $ for name in start middle end; do
 > json @points:json{}
 {"points":{"start":{"x":21933,"y":1055},"middle":{"x":9747,"y":5306},"end":{"x":6788,"y":11885}}}
 
-$ # Command line interface — merging pre-encoded objects
+$ # Command line interface — inline arguments use `{:attr}` format by default
+$ jb points:{}@<(jb start:number{}=x=1,y=2 middle:number{}=x=3,y=4 end:number{}=x=5,y=6)
+{"points":{"start":{"x":1,"y":2},"middle":{"x":3,"y":4},"end":{"x":5,"y":6}}}
+
 $ jb points:{}@<(
 >   for name in start middle end; do
 >     export name
@@ -203,6 +223,10 @@ $ jb ...@entries:{}
 $ # ... defaults to :json{} for json_return=object
 $ jb ...@entries
 {"a":1,"b":2,"c":3}
+
+$ # Command line interface — inline arguments
+$ jb ...:number{}=a=1,b=2,c=3,d=4
+{"a":1,"b":2,"c":3,"d":4}
 
 $ # Bash interface — entries from an associative array
 $ declare -A points=()

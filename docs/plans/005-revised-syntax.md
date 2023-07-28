@@ -198,7 +198,8 @@ start-of-value   = ( start-of-ref | start-of-str )
 
 collection-marker = array-marker | object-marker
 array-marker      = "[" [ split-char ] "]"
-object-marker     = "{" [ split-char ] "}"
+object-marker     = "{" [ split-char ] [ entry-format ] "}"
+entry-format      = ":" ( "json" | "attr" )
 split-char        = /./
 
 attribute-values  = "/" [ attr *( "," attr ) ] "/"
