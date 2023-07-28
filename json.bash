@@ -459,7 +459,9 @@ function json.encode_from_file() {
   # grep (which evaluates the validation regex) buffers the entire input in
   # memory while matching, despite not needing to backtrack or output the match.
   (@(string|number|bool|true|false|null|auto|raw|json)_true)
-    json.stream_encode_array || return $? ;;
+    json.buffer_output '['
+    json.stream_encode_array_entries || return $?
+    json.buffer_output ']'  ;;
   (@(string|raw)_*)
     "json.stream_encode_${type:?}" || return $? ;;
   (@(number|bool|true|false|null|auto|json)_*)
@@ -524,20 +526,19 @@ function json._jevff_close_stdin() { exec 0<&-; }
 # character delimiter defined by $split. While encoding, it buffers individual
 # chunks in memory, but not the file as a whole (so long as the caller flushes
 # their $out buffer via the $out_cb callback.)
-function json.stream_encode_array() {
+function json.stream_encode_array_entries() {
   local _jsea_raw_chunks=() _jsea_encoded_chunks=() _jsea_caller_out=${out:-} \
     _jsea_last_emit=4294967295 _jsea_separator=() _jsea_error=
-  out=$_jsea_caller_out json.buffer_output '['
   readarray -t -d "${split?}" -C json.__jsea_on_chunks_available \
     -c "${json_buffered_chunk_count:-1024}" _jsea_raw_chunks
   if [[ $_jsea_error ]]; then return 1; fi
   unset "_jsea_raw_chunks[$_jsea_last_emit]"
   if [[ ${#_jsea_raw_chunks[@]} != 0 ]]; then
-    out=$_jsea_caller_out in=_jsea_separator json.buffer_output
-    out=$_jsea_caller_out in=_jsea_raw_chunks join=, "json.encode_${type:?}" \
-      || return 1
+    local _jsea_indexes=("${!_jsea_raw_chunks[@]}")
+    json.__jsea_on_chunks_available \
+      "${_jsea_indexes[-1]}" "${_jsea_raw_chunks[-1]}"
+    if [[ $_jsea_error ]]; then return 1; fi
   fi
-  out=$_jsea_caller_out json.buffer_output ']'
 }
 
 function json.__jsea_on_chunks_available() {

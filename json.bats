@@ -713,15 +713,15 @@ function _increment_cb_count() { let ++cb_count; }
 function get_array_encode_examples() {
   example_names=(string number bool true false null auto raw json)
   examples+=(
-    [string_in]=$'a b\nc d\n \n'     [string_out]=$'"a b","c d"," "'
-    [number_in]=$'1\n2\n3\n'         [number_out]=$'1,2,3'
-    [bool_in]=$'true\nfalse\n'       [bool_out]=$'true,false'
-    [true_in]=$'true\ntrue\n'        [true_out]=$'true,true'
-    [false_in]=$'false\nfalse\n'     [false_out]=$'false,false'
-    [null_in]=$'null\nnull\n'        [null_out]=$'null,null'
-    [auto_in]=$'hi\n42\ntrue\n'      [auto_out]=$'"hi",42,true'
-    [raw_in]=$'{"msg":"hi"}\n42\n'   [raw_out]=$'{"msg":"hi"},42'
-    [json_in]=$'{"msg":"hi"}\n42\n'  [json_out]=$'{"msg":"hi"},42'
+    [string_in]=$'a b\nc d\n \n'        [string_out]=$'"a b","c d"," "'
+    [number_in]=$'1\n2\n3\n'            [number_out]=$'1,2,3'
+    [bool_in]=$'true\nfalse\nfalse\n'   [bool_out]=$'true,false,false'
+    [true_in]=$'true\ntrue\ntrue\n'     [true_out]=$'true,true,true'
+    [false_in]=$'false\nfalse\nfalse\n' [false_out]=$'false,false,false'
+    [null_in]=$'null\nnull\nnull\n'     [null_out]=$'null,null,null'
+    [auto_in]=$'hi\n42\ntrue\nnull\n'   [auto_out]=$'"hi",42,true,null'
+    [raw_in]=$'{"msg":"hi"}\n42\n[]\n'  [raw_out]=$'{"msg":"hi"},42,[]'
+    [json_in]=$'{"msg":"hi"}\n42\n[]\n' [json_out]=$'{"msg":"hi"},42,[]'
   )
 }
 
@@ -737,7 +737,7 @@ function get_array_encode_examples() {
       < <(echo -n "${examples["${type:?}_in"]}" ) > "${tmp:?}"
     echo -n "[${examples[${type:?}_out]:?}]" | diff - "${tmp:?}"
     echo "${cb_count@Q}"
-    [[ $cb_count == 1 ]]
+    [[ $cb_count == 2 ]]
 
     # output to array
     buff=() cb_count=0
@@ -745,70 +745,69 @@ function get_array_encode_examples() {
       json.encode_from_file < <(echo -n "${examples["${type:?}_in"]}" )
     printf -v actual '%s' "${buff[@]}"
     [[ "${actual:?}" == "[${examples[${type:?}_out]:?}]" ]]
-    [[ $cb_count == 1 ]]
+    [[ $cb_count == 2 ]]
   done
 }
 
-@test "json.stream_encode_array :: stops reading file on error" {
+@test "json.stream_encode_array_entries :: stops reading file on error" {
   local json_buffered_chunk_count=2
   # We stop reading the stream if an element is invalid
-  split=$'\n' type=number run json.stream_encode_array \
+  split=$'\n' type=number run json.stream_encode_array_entries \
     < <(seq 3; timeout 3 yes ) # stream a series of non-int values forever
 
   [[ $status == 1 && $output == \
-    "[1,2,json.encode_number(): not all inputs are numbers: '3' 'y'" ]]
+    "1,2,json.encode_number(): not all inputs are numbers: '3' 'y'" ]]
 }
 
-@test "json.stream_encode_array :: json_buffered_chunk_count=1 callback" {
+@test "json.stream_encode_array_entries :: json_buffered_chunk_count=1 callback" {
   # json_buffered_chunk_count=1 results in readarray invoking the chunks
   # available callback with an empty array, which is a bit of an edge case.
   json_buffered_chunk_count=1 split=$'\n' type=string \
-    run json.stream_encode_array < <(printf '' )
-  [[ $status == 0 && $output == '[]' ]]
+    run json.stream_encode_array_entries < <(printf '' )
+  [[ $status == 0 && $output == '' ]]
   json_buffered_chunk_count=1 split=$'\n' type=string \
-    run json.stream_encode_array < <(printf 'foo\n' )
-  [[ $status == 0 && $output == '["foo"]' ]]
+    run json.stream_encode_array_entries < <(printf 'foo\n' )
+  [[ $status == 0 && $output == '"foo"' ]]
   json_buffered_chunk_count=1 split=$'\n' type=string \
-    run json.stream_encode_array < <(printf 'foo\nbar\n' )
-  [[ $status == 0 && $output == '["foo","bar"]' ]]
+    run json.stream_encode_array_entries < <(printf 'foo\nbar\n' )
+  [[ $status == 0 && $output == '"foo","bar"' ]]
 }
 
-@test "json.stream_encode_array" {
+@test "json.stream_encode_array_entries" {
   local buff json_buffered_chunk_count=2
   local example_names; local -A examples; get_array_encode_examples
   for type in "${example_names[@]:?}"; do
     # Empty file
-    split=$'\n' type=${type:?} run json.stream_encode_array < <(echo -n '' )
-    [[ $status == 0 && $output == "[]" ]]
+    split=$'\n' type=${type:?} run json.stream_encode_array_entries < <(echo -n '' )
+    [[ $status == 0 && $output == "" ]]
 
     buff=() output=''
-    out=buff split=$'\n' type=${type:?} json.stream_encode_array < <(echo -n '' )
+    out=buff split=$'\n' type=${type:?} json.stream_encode_array_entries < <(echo -n '' )
     printf -v output '%s' "${buff[@]}"
-    [[ $status == 0 && $output == "[]" ]]
+    [[ $status == 0 && $output == "" ]]
 
     # Non-empty file
-    split=$'\n' type=${type:?} run json.stream_encode_array \
+    split=$'\n' type=${type:?} run json.stream_encode_array_entries \
       < <(echo -n "${examples["${type:?}_in"]}" )
-    [[ $status == 0 && $output == "[${examples[${type:?}_out]:?}]" ]]
+    [[ $status == 0 && $output == "${examples[${type:?}_out]:?}" ]]
 
     buff=() output=''
-    out=buff split=$'\n' type=${type:?} json.stream_encode_array \
+    out=buff split=$'\n' type=${type:?} json.stream_encode_array_entries \
       < <(echo -n "${examples["${type:?}_in"]}" )
     printf -v output '%s' "${buff[@]}"
-    [[ $status == 0 && $output == "[${examples[${type:?}_out]:?}]" ]]
+    [[ $status == 0 && $output == "${examples[${type:?}_out]:?}" ]]
   done
 
   # out_cb names a function that's called for each encoded chunk
   buff=()
   stdout_file=$(mktemp_bats)
   out=buff out_cb=__json.stream_encode_cb split=',' type=string \
-    json.stream_encode_array < <(printf 'a,b,c,d,e,f,g') > "${stdout_file:?}"
+    json.stream_encode_array_entries < <(printf 'a,b,c,d,e,f,g') > "${stdout_file:?}"
 
-  # out_cb is called incrementally. It's not called after the initial or ending
-  # [ ] though.
-  echo -n $'CB: "a","b"\nCB: "c","d"\nCB: "e","f"\n' | diff -u - "${stdout_file:?}"
+  # out_cb is called after each group of json_buffered_chunk_count chunks
+  echo -n $'CB: "a","b"\nCB: "c","d"\nCB: "e","f"\nCB: "g"\n' | diff -u - "${stdout_file:?}"
 
-  local expected=('[' '"a","b"' ',' '"c","d"' ',' '"e","f"' ',' '"g"' ']')
+  local expected=('"a","b"' ',' '"c","d"' ',' '"e","f"' ',' '"g"')
   assert_array_equals expected buff
 }
 
