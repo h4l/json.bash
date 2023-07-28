@@ -1033,17 +1033,21 @@ function assert_005_p2_match() {
     [[ ! ${arg?} =~ $_json_bash_005_p2_meta ]]
     return
   fi
-  : ${arg?} ${type?} ${col?} ${attrs?} ${next?}
+  : ${arg?} ${type?} ${col?} ${split:=} ${fmt:=} ${attrs?} ${next?}
 
   [[ ${arg?} =~ $_json_bash_005_p2_meta ]]
   local -n matched_type=BASH_REMATCH[1] \
            matched_col=BASH_REMATCH[2] \
-           matched_attrs=BASH_REMATCH[3]
+           matched_split=BASH_REMATCH[3] \
+           matched_fmt=BASH_REMATCH[4] \
+           matched_attrs=BASH_REMATCH[5]
   matched_next=${arg:${#BASH_REMATCH[0]}}
 
   diff -u <(printf '%s\n' "type=${type@Q}" "collection=${col@Q}" \
+                          "split=${split@Q}" "fmt=${fmt@Q}" \
                           "attributes=${attrs@Q}" "next=${next@Q}") \
           <(printf '%s\n' "type=${matched_type@Q}" "collection=${matched_col@Q}" \
+                          "split=${matched_split@Q}" "fmt=${matched_fmt@Q}" \
                           "attributes=${matched_attrs@Q}" "next=${matched_next@Q}") || {
     declare -p BASH_REMATCH
     return 1
@@ -1056,16 +1060,20 @@ function assert_005_p2_match() {
   arg=':String' type='String' col='' attrs='' next='' assert_005_p2_match
   arg=':str8n' type='str8n' col='' attrs='' next='' assert_005_p2_match
   arg=':[]' type='' col='[]' attrs='' next='' assert_005_p2_match
-  arg=':[,]' type='' col='[,]' attrs='' next='' assert_005_p2_match
+  arg=':[,]' type='' col='[,]' split=',' attrs='' next='' assert_005_p2_match
   arg=':{}' type='' col='{}' attrs='' next='' assert_005_p2_match
-  arg=':{,}' type='' col='{,}' attrs='' next='' assert_005_p2_match
+  arg=':{,}' type='' col='{,}' split=',' attrs='' next='' assert_005_p2_match
+  arg=':{,:json}' type='' col='{,:json}' split=',' fmt=':json' attrs='' next='' assert_005_p2_match
+  arg=':{:foo_123}' type='' col='{:foo_123}' fmt=':foo_123' attrs='' next='' assert_005_p2_match
+  # The regex allows mismatched endings, but they get caught when parsing
+  arg=':[,:foo_123}' type='' col='[,:foo_123}' split=',' fmt=':foo_123' attrs='' next='' assert_005_p2_match
   arg='://' type='' col='' attrs='//' next='' assert_005_p2_match
   arg=':/abc/' type='' col='' attrs='/abc/' next='' assert_005_p2_match
 
-  arg=':foo[/]/abc/' type='foo' col='[/]' attrs='/abc/' next='' assert_005_p2_match
-  arg=':foo[]]/abc/' type='foo' col='[]]' attrs='/abc/' next='' assert_005_p2_match
-  arg=':foo{/}/abc/' type='foo' col='{/}' attrs='/abc/' next='' assert_005_p2_match
-  arg=':foo{}}/abc/' type='foo' col='{}}' attrs='/abc/' next='' assert_005_p2_match
+  arg=':foo[/]/abc/' type='foo' col='[/]' split='/' attrs='/abc/' next='' assert_005_p2_match
+  arg=':foo[]]/abc/' type='foo' col='[]]' split=']' attrs='/abc/' next='' assert_005_p2_match
+  arg=':foo{/}/abc/' type='foo' col='{/}' split='/' attrs='/abc/' next='' assert_005_p2_match
+  arg=':foo{}}/abc/' type='foo' col='{}}' split='}' attrs='/abc/' next='' assert_005_p2_match
 
   arg=':=abc' type='' col='' attrs=''  next='=abc' assert_005_p2_match
   arg=':foo[]/abc/=abc' type='foo' col='[]' attrs='/abc/'  next='=abc' assert_005_p2_match
@@ -1117,7 +1125,7 @@ function assert_arg_parse2_invalid_argument() {
   out=__ignored run json._parse_argument2 "${arg?}"
 
   [[ $status == 1 ]] \
-    || { echo "arg unexpectedly parsed succesfully: ${arg@Q}" >&2; return 1; }
+    || { echo "arg unexpectedly parsed successfully: ${arg@Q}" >&2; return 1; }
   [[ $output = *$msg* ]] || {
     echo "output did not contain msg: msg=${msg@Q}," \
       "output=${output@Q}" >&2; return 1;
@@ -1131,6 +1139,7 @@ function assert_arg_parse2_invalid_argument() {
 
   arg=':[' msg="The argument is not correctly structured:" assert_arg_parse2_invalid_argument
   arg=':{' msg="The argument is not correctly structured:" assert_arg_parse2_invalid_argument
+  arg=':[}' msg="collection marker is not structured correctly — '[}'" assert_arg_parse2_invalid_argument
   arg=':/foo=//=abc' msg="The argument is not correctly structured:" assert_arg_parse2_invalid_argument
   arg='://foo' msg="The argument is not correctly structured:" assert_arg_parse2_invalid_argument
 }
@@ -1265,7 +1274,7 @@ split = ','
   assert_arg_parse2 :{} <<<"
 collection = 'object'
 "
-  # , inside {} needs quoting to avoid expansion as two empty alternatives
+  # , inside {} needs quoting (at the bash level) to avoid expansion as two empty alternatives
   assert_arg_parse2 :'{,}' <<<"
 collection = 'object'
 split = ','
@@ -1274,6 +1283,16 @@ split = ','
   assert_arg_parse2 :{:} <<<"
 collection = 'object'
 split = ':'
+"
+  # object arguments can specify an input chunk format
+  assert_arg_parse2 :{::json} <<<"
+collection = 'object'
+format = 'json'
+split = ':'
+"
+  assert_arg_parse2 :{:attrs} <<<"
+collection = 'object'
+format = 'attrs'
 "
   assert_arg_parse2 :// <<<""
   assert_arg_parse2 :/a=b,,c,d===e==f,==g=//h/ <<<"
@@ -1310,11 +1329,12 @@ val = '/file'
 @val = 'file'
 val = './file'
 "
-  assert_arg_parse2 ...++~~???=tobe?:string[,]/a=b/++~~???@./or/not <<<"
+  assert_arg_parse2 '...++~~???=tobe?:string{,:json}/a=b/++~~???@./or/not' <<<"
 @key = 'str'
 @val = 'file'
 a = 'b'
-collection = 'array'
+collection = 'object'
+format = 'json'
 key = 'tobe?'
 key_flag_empty = '??'
 key_flag_no = '~'

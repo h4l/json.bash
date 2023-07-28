@@ -22,7 +22,7 @@ if shopt -q patsub_replacement 2>/dev/null; then declare -g _json_bash_feat_pats
 
 # Generated in hack/argument_pattern.bash
 _json_bash_005_p1_key=$'^(\\.*)(($|:)|([+~?]*)([^.+~?:]((::|==|@@)|[^:=@])*)?)'
-_json_bash_005_p2_meta=$'^:([a-zA-Z0-9]+)?(\\[.?\\]|\\{.?\\})?(/((//|,,|==)|[^/])*/)?'
+_json_bash_005_p2_meta=$'^:([a-zA-Z0-9]+)?([{[](.?)(:[a-zA-Z0-9_]+)?[]}])?(/((//|,,|==)|[^/])*/)?'
 _json_bash_005_p3_value=$'^([+~?]*)([@=]?)'
 _json_bash_type_name_pattern=$'^(auto|bool|false|json|null|number|raw|string|true)$'
 _json_bash_number_pattern='-?(0|[1-9][0-9]*)(\.[0-9]*)?([eE][+-]?[0-9]+)?'
@@ -678,13 +678,26 @@ function json._parse_argument2() {
   if [[ $p2 =~ $_json_bash_005_p2_meta ]]; then
 
     case "${BASH_REMATCH[2]}" in  # collection marker
-    ('['?']') _jpa_out['split']=${BASH_REMATCH[2]:1:1} ;;&
-    ('['*']') _jpa_out['collection']='array'           ;;
-    ('{'?'}') _jpa_out['split']=${BASH_REMATCH[2]:1:1} ;;&
-    ('{'*'}') _jpa_out['collection']='object'          ;;
+    ('')                                                       ;;
+    ('['*:?*']')
+      echo "json.parse_argument: array arguments cannot have a :format" >&2;
+      return 1                                                 ;;
+    ('['?']'|'['?:*']') _jpa_out['split']=${BASH_REMATCH[3]:?} ;;&
+    ('['*']') _jpa_out['collection']='array'                   ;;
+    ('{'?'}'|'{'?:*'}') _jpa_out['split']=${BASH_REMATCH[3]:?} ;;&
+    ('{'*'}') _jpa_out['collection']='object'                  ;;&
+    ('{'*':attr'?('s')'}') _jpa_out['format']=attrs            ;;
+    ('{'*':json}') _jpa_out['format']=json                     ;;
+    ('{'*:?*'}')
+      echo "json.parse_argument: unsupported object argument :format — ${BASH_REMATCH[4]@Q}" >&2;
+      return 1                                                 ;;
+    ('{'*'}')                                                  ;;
+    (*)
+      echo "json.parse_argument: collection marker is not structured correctly — ${BASH_REMATCH[2]@Q}" >&2;
+      return 1                                                 ;;
     esac
 
-    local _jpa_attributes=${BASH_REMATCH[3]:1:-1}
+    local _jpa_attributes=${BASH_REMATCH[5]:1:-1}
     p3=${p2:${#BASH_REMATCH[0]}}
 
     # Handle the type last because the regex match overwrites the matched groups

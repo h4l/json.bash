@@ -30,7 +30,7 @@ function argument_005() {
   p1_key="^ ( ${splat:?} ) ( ( $ | : ) | ( ${lenient_flags:?} ) ( ${key_start:?} ${inline_key:?} )? )"
 
   lenient_type_name=' [a-zA-Z0-9]+ '
-  collection_marker=' \[.?\] | \{.?\} '
+  collection_marker=' [{[] (.?) ( : [a-zA-Z0-9_]+ )? []}] '
   # The attributes without matching the individual entries. Anything except /,
   # but / can be escaped with //. We capture ,, and == escapes so that we can
   # detect if no escapes are present and skip decoding escapes if so.
