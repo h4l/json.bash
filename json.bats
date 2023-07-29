@@ -1986,6 +1986,16 @@ json(): failed to encode value as number: 'oops' from 'a:number=oops'
   [[ $(json a:raw=']  ') == '{"a":]  }' ]]
 }
 
+@test "json.bash :: bash bugs :: coproc closes open FDs" {
+  # https://savannah.gnu.org/support/index.php?110910
+  # We start a coproc for the JSON validator. Bash closes process substitution
+  # FDs when starting a coproc, so this fails without our explicit workaround
+  # to dup and restore FDs when creating the coproc.
+  # The error would be: /dev/fd/63: No such file or directory
+  # ( <(echo hi) uses FD 63 as 63 is the first FD bash allocates)
+  json a:json={} b@<(echo hi)
+}
+
 @test "json streaming output with json_stream=true :: arrays" {
   # By default json collects output in a buffer and only emits it in one go.
   # This behaviour is intended to prevent partial output in the case of errors.

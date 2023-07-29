@@ -368,11 +368,28 @@ function json.start_json_validator() {
   # validation request.
   validation_request=$'(:?(?<bool>true|false)(?<true>true)(?<false>false)(?<null>null)(?<ws>[\\x20\\x09\\x0A\\x0D]*+)(?<json>\\[(?:(?&ws)(?&json)(?:(?&ws),(?&ws)(?&json))*+)?+(?&ws)\\]|\\{(?:(?<entry>(?&ws)(?&str)(?&ws):(?&ws)(?&json))(?:(?&ws),(?&entry))*+)?+(?&ws)\\}|true|false|null|(?<num>-?+(?:0|[1-9][0-9]*+)(?:\\.[0-9]*+)?+(?:[eE][+-]?+[0-9]++)?+)|(?<str>"(?:[\\x20-\\x21\\x23-\\x5B\\x5D-\\xFF]|\\\\(?:["\\\\/bfnrt]|u[A-Fa-f0-9]{4}))*+"))){0}^[\\w]++(?:(?=((?<pair>:(?&pair)?+\\x1E(?:j(?&ws)(?&json)(?&ws)|s(?&ws)(?&str)(?&ws)|n(?&ws)(?&num)(?&ws)|b(?&ws)(?&bool)(?&ws)|t(?&ws)(?&true)(?&ws)|f(?&ws)(?&false)(?&ws)|z(?&ws)(?&null)(?&ws)|Oj(?&ws)\\{(?:(?<entry_json>(?&ws)(?&str)(?&ws):(?&ws)(?&json))(?:(?&ws),(?&entry_json))*+)?+(?&ws)\\}(?&ws)|Os(?&ws)\\{(?:(?<entry_str>(?&ws)(?&str)(?&ws):(?&ws)(?&str))(?:(?&ws),(?&entry_str))*+)?+(?&ws)\\}(?&ws)|On(?&ws)\\{(?:(?<entry_num>(?&ws)(?&str)(?&ws):(?&ws)(?&num))(?:(?&ws),(?&entry_num))*+)?+(?&ws)\\}(?&ws)|Ob(?&ws)\\{(?:(?<entry_bool>(?&ws)(?&str)(?&ws):(?&ws)(?&bool))(?:(?&ws),(?&entry_bool))*+)?+(?&ws)\\}(?&ws)|Ot(?&ws)\\{(?:(?<entry_true>(?&ws)(?&str)(?&ws):(?&ws)(?&true))(?:(?&ws),(?&entry_true))*+)?+(?&ws)\\}(?&ws)|Of(?&ws)\\{(?:(?<entry_false>(?&ws)(?&str)(?&ws):(?&ws)(?&false))(?:(?&ws),(?&entry_false))*+)?+(?&ws)\\}(?&ws)|Oz(?&ws)\\{(?:(?<entry_null>(?&ws)(?&str)(?&ws):(?&ws)(?&null))(?:(?&ws),(?&entry_null))*+)?+(?&ws)\\}(?&ws)|Aj(?&ws)\\[(?:(?&ws)(?&json)(?:(?&ws),(?&ws)(?&json))*+)?+(?&ws)\\](?&ws)|As(?&ws)\\[(?:(?&ws)(?&str)(?:(?&ws),(?&ws)(?&str))*+)?+(?&ws)\\](?&ws)|An(?&ws)\\[(?:(?&ws)(?&num)(?:(?&ws),(?&ws)(?&num))*+)?+(?&ws)\\](?&ws)|Ab(?&ws)\\[(?:(?&ws)(?&bool)(?:(?&ws),(?&ws)(?&bool))*+)?+(?&ws)\\](?&ws)|At(?&ws)\\[(?:(?&ws)(?&true)(?:(?&ws),(?&ws)(?&true))*+)?+(?&ws)\\](?&ws)|Af(?&ws)\\[(?:(?&ws)(?&false)(?:(?&ws),(?&ws)(?&false))*+)?+(?&ws)\\](?&ws)|Az(?&ws)\\[(?:(?&ws)(?&null)(?:(?&ws),(?&ws)(?&null))*+)?+(?&ws)\\](?&ws)))$)):++)?+'
 
+  # For some reason Bash seems to close open FDs starting from 63 when it starts
+  # a coprocess. (Bash allocates FDs counting down from 63). This causes
+  # arguments using process substitution to have their /dev/fd/xx files stop
+  # existing. We work around this by duping all sequential existing FDs from 63
+  # downwards to new FDs and restoring them after the coproc has started. (Bash
+  # allocates FDs from 10 when dup'ing and these aren't closed).
+  # https://savannah.gnu.org/support/index.php?110910
+  local saved_fds=()
+  # Arbitrary hard cap at 20 to avoid running into the FDs we're duping to,
+  # which will be 10 upwards.
+  for ((i=0; i < 20; ++i)); do
+    { exec {saved_fds[i]}<&"$(( 63 - i ))"; } 2>/dev/null || break
+  done
+
   { coproc json_validator ( grep --only-matching --line-buffered \
     -P -e "${validation_request//[$' \n']/}" )
   } 2>/dev/null  # hide interactive job control PID output
   _json_validator_pids[$$]=${json_validator_PID:?}
-
+  # restore FDs bash closed...
+  for ((i=0; i < ${#saved_fds[@]}; ++i)); do
+    eval "exec $(( 63 - i ))<&${saved_fds[i]:?} {saved_fds[i]}<&-"
+  done
   # Bash only allows 1 coproc per bash process, so by creating a coproc we would
   # normally prevent another things in this process from creating one. We can
   # avoid this restriction by duplicating the coproc's pipe FDs to new ones, and
