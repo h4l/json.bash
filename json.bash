@@ -473,16 +473,20 @@ function json.validate() {
 function json.encode_from_file() {
   # TODO: remove backwards compat
   if [[ ${array:-} == true ]]; then collection=array; fi
-
-  case "${type:?}_${collection:-}" in
+  local entries=${entries:-}
+  case "${type:?}_${collection:-}_${entries/true/entries}" in
   # There's not much point in implementing json.stream_encode_json() because
   # grep (which evaluates the validation regex) buffers the entire input in
   # memory while matching, despite not needing to backtrack or output the match.
-  (@(string|number|bool|true|false|null|auto|raw|json)_array)
+  (@(string|number|bool|true|false|null|auto|raw|json)_array_entries)
+    json.stream_encode_array_entries || return $?                             ;;
+  (@(string|number|bool|true|false|null|auto|raw|json)_object_entries)
+    json.stream_encode_object_entries || return $?                            ;;
+  (@(string|number|bool|true|false|null|auto|raw|json)_array_*)
     json.buffer_output '['
     json.stream_encode_array_entries || return $?
     json.buffer_output ']'                                                    ;;
-  (@(string|number|bool|true|false|null|auto|raw|json)_object)
+  (@(string|number|bool|true|false|null|auto|raw|json)_object_*)
     json.buffer_output '{'
     json.stream_encode_object_entries || return $?
     json.buffer_output '}'                                                    ;;
@@ -869,7 +873,8 @@ json.define_defaults __empty__ ''
 function json() {
   # vars referenced by arguments cannot start with _, so we prefix our own vars
   # with _ to prevent args referencing locals.
-  local IFS _collection _dashdash_seen _encode_fn _format _key _type _value _value_array _match _split
+  local IFS _collection _dashdash_seen _encode_fn _format _key _key_array \
+        _type _value _value_array _match _splat _split
 
   local _caller_out=${out:-}
   if [[ ${json_stream:-} != true ]]
@@ -902,7 +907,10 @@ function json() {
     unset {_key,_value}{,_file} _value_array;
 
     _type=${_attrs[type]:-${_defaults[type]:-string}}
-    _collection=${_attrs['collection']:-${_defaults['collection']:-false}}
+    _splat=${_attrs['splat']:-${_defaults['splat']:-}}
+    if [[ $_splat == true ]] # splat always implies the arg is a collection
+    then _collection=${_json_return?}
+    else _splat='' _collection=${_attrs['collection']:-${_defaults['collection']:-false}}; fi
     # If no value is set, provide a default
     if [[ ! ${_attrs[val]+isset} ]]; then # arg has no value
       case "${_type}_${_attrs[@key]:-}" in
@@ -928,16 +936,25 @@ function json() {
     case "${_json_return}_${_attrs[@key]:-}" in
     (object_var)
       local -n _key="${_attrs[key]}"
-      if [[ ! ${_key+isset} ]]; then
-        # Instead of containing the content, a var can contain a filename which
-        # contains the value(s).
-        if [[ ${_attrs[key]} != *']' ]]  # don't create _FILE refs for array vars
-        then local -n _key_file="${_attrs[key]}_FILE"; fi
+      if [[ ${_key+isset} ]]; then
+        if [[ ${_key@a} == *[aA]* ]]; then local -n _key_array=_key; fi
+      else # distinguish arrays without [0] from unset vars, see _value below
+        : "${_key:=}"
+        if [[ ${_key@a} == *[aA]* ]]; then
+          unset '_key[0]'
+          local -n _key_array=_key
+        else
+          unset _key
+          # Instead of containing the content, a var can contain a filename which
+          # contains the value(s).
+          if [[ ${_attrs[key]} != *']' ]]  # don't create _FILE refs for array vars
+          then local -n _key_file="${_attrs[key]}_FILE"; fi
 
-        if [[ ! ${_key_file:-} =~ ^\.?/ ]]; then
-          unset -n _key_file
-          json._error "json(): argument references unbound variable:" \
-            "\$${_attrs[key]} from ${arg@Q}"; return 3
+          if [[ ! ${_key_file:-} =~ ^\.?/ ]]; then
+            unset -n _key_file
+            json._error "json(): argument references unbound variable:" \
+              "\$${_attrs[key]} from ${arg@Q}"; return 3
+          fi
         fi
       fi
     ;;
@@ -983,7 +1000,7 @@ function json() {
       continue
     fi
 
-    if [[ $_json_return == object ]]; then
+    if [[ $_json_return == object && $_splat != true ]]; then
       if [[ ${_key_file:-} ]]
       then json.stream_encode_string < "${_key_file:?}" || {
         json._error "json(): failed to read file referenced by argument:" \
@@ -1000,8 +1017,8 @@ function json() {
       _format=${_attrs['format']:-${_defaults['format']:-${_format:?}}}
 
       if ! { { collection=${_collection:?} format=${_format:?} type=${_type:?} \
-              split=${_split?} json.encode_from_file || _status=$?; } \
-              < "${_value_file:?}"; }; then
+              entries=${_splat?} split=${_split?} json.encode_from_file \
+              || _status=$?; } < "${_value_file:?}"; }; then
         json._error "json(): failed to read file referenced by argument:" \
           "${_value_file@Q} from ${arg@Q}"; return 4
       fi
@@ -1018,9 +1035,13 @@ function json() {
         fi
 
         if [[ ${_collection} == array ]]; then
-          json.buffer_output '['
-          join=, in=_value_array "$_encode_fn" || _status=$?;
-          json.buffer_output "]"
+          if [[ $_splat == true ]]; then
+            join=, in=_value_array "$_encode_fn" || _status=$?;
+          else
+            json.buffer_output '['
+            join=, in=_value_array "$_encode_fn" || _status=$?;
+            json.buffer_output "]"
+          fi
         else
           _format=${_attrs['format']:-${_defaults['format']:-${_format:?}}}
           if [[ ${_value_array@a} == *A* ]]; then  # assoc arrays are not decoded
@@ -1032,9 +1053,19 @@ function json() {
               return 2
             fi
           fi
-          json.buffer_output '{'
-          join='' in=_value_array type=${_type} "${_encode_fn:?}" || _status=$?;
-          json.buffer_output "}"
+          if [[ $_splat == true ]]; then
+            # A key and value array can be used to define entries
+            if [[ -R _key_array && -R _value_array && ${_key_array@a} == *a* \
+                  && ${_value_array@a} == *a* ]]; then
+              join='' in=_key_array,_value_array type=${_type} json.encode_object_entries
+            else
+              join='' in=_value_array type=${_type} "${_encode_fn:?}" || _status=$?;
+            fi
+          else
+            json.buffer_output '{'
+            join='' in=_value_array type=${_type} "${_encode_fn:?}" || _status=$?;
+            json.buffer_output "}"
+          fi
         fi
       else "$_encode_fn" "${_value}" || _status=$?; fi
       if [[ $_status != 0 ]]; then

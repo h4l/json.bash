@@ -1676,6 +1676,29 @@ expected: $expected
     | equals_json '{"files":{"bin/jb-cat":260,"bin/jb-echo":85,"bin/jb-stream":167}}'
 }
 
+@test "json.bash json :: ... splat arguments" {
+  # The ... (splat) operator merges the entries of an object or array argument
+  # into the parent object/array being created.
+  json ...:number=top=0,bottom=10,left=2,right=8 colour=blue \
+    | equals_json '{top: 0,bottom: 10, left: 2, right: 8, colour: "blue"}'
+
+  json.array ...:number[,]=5,6,7,8  ...:number[]@<(seq 10 12) \
+    | equals_json '[5, 6, 7, 8, 10, 11, 12]'
+
+  json l4h:json@<(jb id=u789) ...:json@<(
+    username=h4l json @username:{}=id=u123,name=Hal
+    username=foo json @username:{}=id=u456,name=Foo
+  ) | equals_json '{"l4h":{"id":"u789"},"h4l":{"id":"u123","name":"Hal"},"foo":{"id":"u456","name":"Foo"}}'
+
+  json ...:json{:json}/split=/='{
+    "file": "src/main/frob.sh",
+    "labels": [
+      "foo=bar",
+      "bar=baz"
+    ]
+  }' | compare=parsed equals_json '{"file": "src/main/frob.sh", "labels": ["foo=bar","bar=baz"]}'
+}
+
 @test "json.bash json.define_defaults :: returns 2 if type is invalid" {
   run json.define_defaults example type=cheese
   [[ $status == 2 \
