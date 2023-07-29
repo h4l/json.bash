@@ -852,7 +852,7 @@ json.define_defaults __empty__ ''
 function json() {
   # vars referenced by arguments cannot start with _, so we prefix our own vars
   # with _ to prevent args referencing locals.
-  local IFS _array _dashdash_seen _encode_fn _key _type _value _value_array _match _split
+  local IFS _collection _dashdash_seen _encode_fn _format _key _type _value _value_array _match _split
 
   local _caller_out=${out:-}
   if [[ ${json_stream:-} != true ]]
@@ -885,7 +885,7 @@ function json() {
     unset {_key,_value}{,_file} _value_array;
 
     _type=${_attrs[type]:-${_defaults[type]:-string}}
-    _array=${_attrs[array]:-${_defaults[array]:-false}}
+    _collection=${_attrs['collection']:-${_defaults['collection']:-false}}
     # If no value is set, provide a default
     if [[ ! ${_attrs[val]+isset} ]]; then # arg has no value
       case "${_type}_${_attrs[@key]:-}" in
@@ -931,6 +931,7 @@ function json() {
     case "${_attrs[@val]}" in
     (var)
       local -n _value="${_attrs[val]}"
+      _format=json
       if [[ ${_value+isset} ]]; then
         if [[ ${_value@a} == *[aA]* ]]; then local -n _value_array=_value; fi
       else
@@ -951,15 +952,15 @@ function json() {
           fi
         fi
       fi ;;
-    (file) _value_file=${_attrs[val]} ;;
-    (str) _value=${_attrs[val]} ;;
+    (file) _value_file=${_attrs[val]} _format=json ;;
+    (str) _value=${_attrs[val]} _format=attrs ;;
     esac
 
     if [[ ${_first:?} == true ]]; then _first=false
     else json.buffer_output ","; fi
 
     # Handle the common object string value case a little more efficiently
-    if [[ $_type == string && $_json_return == object && $_array != true \
+    if [[ $_type == string && $_json_return == object && $_collection == false \
           && ! ( ${_key_file:-} || ${_value_file:-} ) ]]; then
       join=':' json.encode_string "$_key" "$_value" || { json._error; return 1; }
       continue
@@ -977,11 +978,13 @@ function json() {
     _encode_fn="json.encode_${_type:?}"
     if [[ ${_value_file:-} ]]; then
       if [[ ${_attrs[split]+isset} ]]; then _split=${_attrs[split]}
-      elif [[ ${_attrs[array]:-} == true ]]; then _split=$'\n';
+      elif [[ ${_collection} == @(array|object) ]]; then _split=$'\n';
       else _split=''; fi
+      _format=${_attrs['format']:-${_defaults['format']:-${_format:?}}}
 
-      if ! { { array=${_array:?} type=${_type:?} split=${_split?} \
-              json.encode_from_file || _status=$?; } < "${_value_file:?}"; }; then
+      if ! { { collection=${_collection:?} format=${_format:?} type=${_type:?} \
+              split=${_split?} json.encode_from_file || _status=$?; } \
+              < "${_value_file:?}"; }; then
         json._error "json(): failed to read file referenced by argument:" \
           "${_value_file@Q} from ${arg@Q}"; return 4
       fi
@@ -990,17 +993,32 @@ function json() {
           "${_value_file@Q} from ${arg@Q}"; return 1
       fi
     else
-      if [[ $_array == true ]]; then
-        json.buffer_output "["
+      if [[ ${_collection:?} == @(array|object) ]]; then
         if [[ ! -R _value_array ]]; then # if the value isn't an array, split it
           if [[ ${_attrs[split]+isset} ]]; then _split=${_attrs[split]}
-          elif [[ ${_attrs[array]:-} == true ]]; then _split=$'\n';
-          else _split=''; fi
-
+          else _split=$'\n'; fi
           IFS=${_split}; _value_array=(${_value})  # intentional splitting
+        fi
+
+        if [[ ${_collection} == array ]]; then
+          json.buffer_output '['
           join=, in=_value_array "$_encode_fn" || _status=$?;
-        else join=, in=_value "$_encode_fn" || _status=$?; fi
-        json.buffer_output "]"
+          json.buffer_output "]"
+        else
+          _format=${_attrs['format']:-${_defaults['format']:-${_format:?}}}
+          if [[ ${_value_array@a} == *A* ]]; then  # assoc arrays are not decoded
+            _encode_fn=json.encode_object_entries
+          else
+            _encode_fn=${_json_bash_entry_formats["${_format:?}"]:-}
+            if [[ ! ${_encode_fn} ]]; then
+              json._error "json(): object entry format does not exist — ${_format@Q}"
+              return 2
+            fi
+          fi
+          json.buffer_output '{'
+          join='' in=_value_array type=${_type} "${_encode_fn:?}" || _status=$?;
+          json.buffer_output "}"
+        fi
       else "$_encode_fn" "${_value}" || _status=$?; fi
       if [[ $_status != 0 ]]; then
         json._error "json(): failed to encode value as ${_type:?}:" \

@@ -1515,7 +1515,7 @@ expected: $expected
     | equals_json '{"/bin/ls": "ls_path", "cat": "prog2", "/bin/cat": "ref"}'
 }
 
-@test "json.bash json values" {
+@test "json.bash json — objects with fixed keys" {
   # Property values can be set in the argument
   json message="Hello World" | equals_json '{message: "Hello World"}'
   # Or with a variable
@@ -1537,7 +1537,7 @@ expected: $expected
     | equals_json '{ls_path: "/bin/ls", prog2: "cat", ref: "/bin/cat"}'
 }
 
-@test "json.bash json.array values" {
+@test "json.bash json.array — arrays with fixed values" {
   # Array values can also be set in the arguments
   json.array Hi "Bob Bobson" | equals_json '["Hi", "Bob Bobson"]'
   # Or via variables
@@ -1557,7 +1557,7 @@ expected: $expected
   a=A b=B json.array @a@a @b=B c=C | equals_json '["A", "B", "C"]'
 }
 
-@test "json.bash json types" {
+@test "json.bash json :: types" {
   # Types
   # Values are strings by default
   json data=42 | equals_json '{data: "42"}'
@@ -1584,7 +1584,7 @@ expected: $expected
     | equals_json '{a: "42", b: 42, c: 42}'
 }
 
-@test "json.bash json array types" {
+@test "json.bash json :: variable-length array values" {
   # Arrays of values can be created using the [] suffix with each type
   json sizes:number[]=42 | equals_json '{sizes: [42]}'
 
@@ -1638,6 +1638,44 @@ expected: $expected
   json @nothing:[] @empty:[] | equals_json '{nothing: [], empty: []}'
 }
 
+@test "json.bash json :: variable-length object values" {
+  # An argument using {} creates an object with values of the specified type
+  # Bash associative array variables can hold entries
+  local -A sizes=(['xs']=0 ['s']=10 ['m']=20 ['l']=30 ['xl']=40)
+  json @sizes:number{} \
+    | compare=parsed equals_json '{sizes: {xs: 0, s: 10, m: 20, l: 30, xl: 40}}'
+
+  # Inline argument values use the same key=value syntax as argument attributes
+  json sizes:number{}=xs=0,s=10,m=20,l=30,xl=40 \
+    | compare=parsed equals_json '{sizes: {xs: 0, s: 10, m: 20, l: 30, xl: 40}}'
+
+  # File references merge JSON objects from each line of the file
+  json.define_defaults number type=number
+  local json_defaults=number
+  json sizes:number{}@<(
+    json xs=0 s=10
+    json m=20 l=30
+    json xl=40
+  ) | compare=parsed equals_json '{sizes: {xs: 0, s: 10, m: 20, l: 30, xl: 40}}'
+
+  # Bash indexed arrays also merge JSON objects from each array element
+  unset sizes; local -a sizes=()
+  out=sizes json xs=0 s=10
+  out=sizes json m=20 l=30
+  out=sizes json xl=40
+  json @sizes:number{} | equals_json '{sizes: {xs: 0, s: 10, m: 20, l: 30, xl: 40}}'
+
+  unset json_defaults
+
+  # The format of arguments can be changed using :json or :attrs inside the {}
+  json fromjson:{:json}='{"foo":"bar"}' fromattrs:{:attrs}@<(echo 'bar=baz') \
+    | equals_json '{"fromjson":{"foo":"bar"},"fromattrs":{"bar":"baz"}}'
+
+  find bin -type f -exec wc -w {} + | head -n-1 | awk '{ print $2"="$1 }' \
+    | json files:number{:attrs}@/dev/stdin \
+    | equals_json '{"files":{"bin/jb-cat":260,"bin/jb-echo":85,"bin/jb-stream":167}}'
+}
+
 @test "json.bash json.define_defaults :: returns 2 if type is invalid" {
   run json.define_defaults example type=cheese
   [[ $status == 2 \
@@ -1653,19 +1691,19 @@ expected: $expected
     | equals_json '{data: 42, msg: "Hi"}'
 }
 
-@test "json.bash json :: uses default array flag from json_defaults" {
+@test "json.bash json :: uses default collection flag from json_defaults" {
   # The default array=true/false flag can be changed with json_defaults
-  json.define_defaults arrays array=true
+  json.define_defaults arrays collection=array
   json_defaults=arrays json data=42 | equals_json '{data: ["42"]}'
   # array can be disabled with an explicit attribute
-  json_defaults=arrays json data=42 msg:[]/array=false/=Hi \
+  json_defaults=arrays json data=42 msg:[]/collection=false/=Hi \
     | equals_json '{data: ["42"], msg: "Hi"}'
 }
 
 @test "json.bash json.define_defaults :: allows defaults to be re-defined" {
   json.define_defaults example type=number
   json_defaults=example json a=42 | equals_json '{a:42}'
-  json.define_defaults example type=auto,array=true
+  json.define_defaults example type=auto,collection=array
   json_defaults=example json a=42 b=hi | equals_json '{a:[42],b:["hi"]}'
 }
 
