@@ -881,7 +881,8 @@ function json() {
     if ! out=_attrs json.parse_argument "$arg"; then
       json._error "json(): argument is not structured correctly: ${arg@Q}"; return 2;
     fi
-    unset -n {_key,_value}{,_file}; unset {_key,_value}{,_file};
+    unset -n {_key,_value}{,_file} _value_array;
+    unset {_key,_value}{,_file} _value_array;
 
     _type=${_attrs[type]:-${_defaults[type]:-string}}
     _array=${_attrs[array]:-${_defaults[array]:-false}}
@@ -930,14 +931,24 @@ function json() {
     case "${_attrs[@val]}" in
     (var)
       local -n _value="${_attrs[val]}"
-      if [[ ! ${_value+isset} ]]; then
-        if [[ ${_attrs[val]} != *']' ]]  # don't create _FILE refs for array vars
-        then local -n _value_file="${_attrs[val]}_FILE"; fi
+      if [[ ${_value+isset} ]]; then
+        if [[ ${_value@a} == *[aA]* ]]; then local -n _value_array=_value; fi
+      else
+        # arrays without [0] set are considered unset by the + operator
+        : "${_value:=}"  # set [0] so we can safely check flags of potentially-unset var
+        if [[ ${_value@a} == *[aA]* ]]; then
+          unset '_value[0]'  # _value was array without [0]
+          local -n _value_array=_value
+        else
+          unset _value # _value was not previously set
+          if [[ ${_attrs[val]} != *']' ]]  # don't create _FILE refs for array vars
+          then local -n _value_file="${_attrs[val]}_FILE"; fi
 
-        if [[ ! ${_value_file:-} =~ ^\.?/ ]]; then
-          unset -n _value_file
-          json._error "json(): argument references unbound variable:" \
-            "\$${_attrs[val]} from ${arg@Q}"; return 3
+          if [[ ! ${_value_file:-} =~ ^\.?/ ]]; then
+            unset -n _value_file
+            json._error "json(): argument references unbound variable:" \
+              "\$${_attrs[val]} from ${arg@Q}"; return 3
+          fi
         fi
       fi ;;
     (file) _value_file=${_attrs[val]} ;;
@@ -981,7 +992,7 @@ function json() {
     else
       if [[ $_array == true ]]; then
         json.buffer_output "["
-        if [[ ${_value@a} != *a* ]]; then # if the value isn't an array, split it
+        if [[ ! -R _value_array ]]; then # if the value isn't an array, split it
           if [[ ${_attrs[split]+isset} ]]; then _split=${_attrs[split]}
           elif [[ ${_attrs[array]:-} == true ]]; then _split=$'\n';
           else _split=''; fi

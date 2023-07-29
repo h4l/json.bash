@@ -1616,7 +1616,7 @@ expected: $expected
     | equals_json '{nullterm: ["AB\nCD", "EF\nGH\n"]}'
 
   # @var references can be bash arrays
-  names=("Bob Bobson" "Alice Alison")
+  local names=("Bob Bobson" "Alice Alison")
   sizes=(42 55)
   json @names:string[] @sizes:number[] | equals_json '{
     names: ["Bob Bobson", "Alice Alison"],
@@ -1632,6 +1632,10 @@ expected: $expected
   # empty inline values are empty arrays
   json str:string[]= num:number[]= bool:bool[]= raw:raw[]= json:json[]= \
     | equals_json '{str: [], num: [], bool: [], raw: [], json: []}'
+
+  # array variables can be empty, both via empty arrays and an empty string
+  local nothing=() empty=''
+  json @nothing:[] @empty:[] | equals_json '{nothing: [], empty: []}'
 }
 
 @test "json.bash json.define_defaults :: returns 2 if type is invalid" {
@@ -1859,22 +1863,6 @@ expected: $expected
   echo "$output"
   [[ $status == 4 && $output =~ \
     "json(): failed to read file referenced by argument: '${missing_file:?}' from 'key@${missing_file:?}'" ]]
-}
-
-@test "json known issues" {
-  # Bash treats empty arrays as if they were never defined with set -u 🫠
-  # We could hack around this by running `declare -p` and parsing the output to
-  # see if it reports =(). But this would fail for namerefs pointing to arrays.
-  local -a empty_array=()
-  run json empty:[]@empty_array
-  echo "$status"
-  echo "$output"
-  [[ $status == 3 && \
-    $output =~ "argument references unbound variable: \$empty_array from 'empty:[]@empty_array'" ]]
-
-  # A workaround is to use a non-array var containing an empty string
-  unset empty_array; local empty_array=''
-  json empty:[]@empty_array | equals_json '{"empty":[]}'
 }
 
 @test "json errors are signaled in-band by writing a 0x18 Cancel control character" {
