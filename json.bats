@@ -1705,6 +1705,137 @@ expected: $expected
   fi
 }
 
+@test "json.resolve_empty_key_action" {
+  local -A _defaults _attrs
+  local _action
+
+  _attrs=(['@key']='var')
+  _attrs+=(
+    ['empty_key']='attrs_empty_key'
+    ['empty_var_key']='attrs_empty_var_key'
+    ['empty_var_string']='attrs_empty_var_string'
+    ['empty_string']='attrs_empty_string'
+  )
+  _defaults=(
+    ['empty_key']='defaults_empty_key'
+    ['empty_var_key']='defaults_empty_var_key'
+    ['empty_var_string']='defaults_empty_var_string'
+    ['empty_string']='defaults_empty_string'
+  )
+
+  for key in empty_key empty_var_key empty_var_string empty_string; do
+    attrs=_attrs default_attrs=_defaults action=_action json.resolve_empty_key_action
+    [[ $_action == "attrs_${key:?}" ]]
+    _attrs["${key:?}"]=''
+  done
+
+  for key in empty_key empty_var_key empty_var_string empty_string; do
+    unset _attrs["${key:?}"]
+    attrs=_attrs default_attrs=_defaults action=_action json.resolve_empty_key_action
+    [[ $_action == "defaults_${key:?}" ]]
+    _defaults["${key:?}"]=''
+  done
+}
+
+@test "json.resolve_empty_value_action :: non-collection" {
+  local -A _defaults _attrs
+  local _action
+
+  _attrs=(['@val']='var' ['type']='number')
+  _attrs+=(
+    ['empty']='attrs_empty'
+    ['empty_var_number']='attrs_empty_var_number'
+    ['empty_var']='attrs_empty_var'
+    ['empty_number']='attrs_empty_number'
+  )
+  _defaults=(
+    ['empty']='defaults_empty'
+    ['empty_var_number']='defaults_empty_var_number'
+    ['empty_var']='defaults_empty_var'
+    ['empty_number']='defaults_empty_number'
+  )
+
+  for key in empty empty_var_number empty_var empty_number; do
+    attrs=_attrs default_attrs=_defaults action=_action json.resolve_empty_value_action
+    [[ $_action == "attrs_${key:?}" ]]
+    _attrs["${key:?}"]=''
+  done
+
+  for key in empty empty_var_number empty_var empty_number; do
+    unset _attrs["${key:?}"]
+    attrs=_attrs default_attrs=_defaults action=_action json.resolve_empty_value_action
+    [[ $_action == "defaults_${key:?}" ]]
+    _defaults["${key:?}"]=''
+  done
+}
+
+@test "json.resolve_empty_value_action :: collection" {
+  local -A _defaults _attrs
+  local _action
+
+  _attrs=(['@val']='var' ['type']='number' ['collection']=object)
+  _attrs+=(
+    ['empty']='attrs_empty'
+    ['empty_var_number_object']='attrs_empty_var_number_object'
+    ['empty_var_object']='attrs_empty_var_object'
+    ['empty_number_object']='attrs_empty_number_object'
+    ['empty_object']='attrs_empty_object'
+  )
+  _defaults=(
+    ['empty']='defaults_empty'
+    ['empty_var_number_object']='defaults_empty_var_number_object'
+    ['empty_var_object']='defaults_empty_var_object'
+    ['empty_number_object']='defaults_empty_number_object'
+    ['empty_object']='defaults_empty_object'
+  )
+
+  for key in empty empty_var_number_object empty_var_object empty_number_object empty_object; do
+    attrs=_attrs default_attrs=_defaults action=_action json.resolve_empty_value_action
+    [[ $_action == "attrs_${key:?}" ]]
+    _attrs["${key:?}"]=''
+  done
+
+  for key in empty empty_var_number_object empty_var_object empty_number_object empty_object; do
+    unset _attrs["${key:?}"]
+    attrs=_attrs default_attrs=_defaults action=_action json.resolve_empty_value_action
+    [[ $_action == "defaults_${key:?}" ]]
+    _defaults["${key:?}"]=''
+  done
+}
+
+@test "json.apply_empty_action" {
+  local should_omit='' substitute='initial' name="argument 'foo'" status=0
+
+  omit=should_omit sub=substitute action='omit' json.apply_empty_action || status=$?
+  [[ $status == 2 && ${should_omit?} == true ]]
+
+  omit=should_omit sub=substitute action='error' run json.apply_empty_action
+  [[ $status == 1 && $output == "json(): argument 'foo' must be non-empty but is empty" ]]
+
+  omit=should_omit sub=substitute action='error=unable to convince gnomes to communicate' run json.apply_empty_action
+  [[ $status == 1 && $output == "json(): argument 'foo' must be non-empty but is empty — unable to convince gnomes to communicate" ]]
+
+  omit=should_omit sub=substitute action=$'string=foo\nbar' json.apply_empty_action
+  echo "${substitute@Q}"
+  [[ $substitute == '"foo\nbar"' ]]
+
+  omit=should_omit sub=substitute action='number=42' json.apply_empty_action
+  [[ $substitute == '42' ]]
+
+  omit=should_omit sub=substitute action=' { "abc": 123 } ' json.apply_empty_action
+  [[ $substitute == ' { "abc": 123 } ' ]]
+
+  omit=should_omit sub=substitute action=' { "abc": 123' run json.apply_empty_action
+  echo "${output@Q}"
+  [[ $status == 1 ]]
+  [[ $output =~ "json.encode_json(): not all inputs are valid JSON: ' { \"abc\": 123'" ]]
+  [[ $output =~ "json.apply_empty_action(): the empty value from argument 'foo' should have been substituted, but the substitute value is not valid" ]]
+
+  omit=should_omit sub=substitute action='[42]' require_string=true run json.apply_empty_action
+  [[ $status == 1 ]]
+  [[ $output =~ "json.apply_empty_action(): the empty value from argument 'foo' should have been substituted, but the substitute value is not a string — '[42]'" ]]
+}
+
 @test "json.bash json / json.array / json.object functions" {
   # The json function creates JSON objects
   json | equals_json '{}'
@@ -1868,7 +1999,7 @@ expected: $expected
 
   # array variables can be empty, both via empty arrays and an empty string
   local nothing=() empty=''
-  json @nothing:[] @empty:[] | equals_json '{nothing: [], empty: []}'
+  json @nothing:[]?? @empty:[]?? | equals_json '{nothing: [], empty: []}'
 }
 
 @test "json.bash json :: variable-length object values" {
@@ -2105,8 +2236,6 @@ expected: $expected
 @test "json.bash json errors" {
   # inline keys can't contain : (basically parsed as an invalid type)
   run json a:b:string
-  echo "$status"
-  echo "$output"
   [[ $status == 2 && $output =~ "type name must be one of auto, bool, false, json, null, number, raw, string or true, but was 'b'" ]]
 
   # invalid types are not allowed
@@ -2129,10 +2258,6 @@ expected: $expected
   [[ $status == 1 && $output =~ "failed to encode value as null: 'a' from 'a:null=a'" ]]
 
   # Syntax errors in :json type values are errors
-  run json a:json=
-  [[ $status == 1 && $output =~ "failed to encode value as json: '' from 'a:json='" \
-    && $output =~ "json.encode_json(): not all inputs are valid JSON: ''" ]]
-
   run json a:json='{"foo":'
   [[ $status == 1 \
     && $output =~ " failed to encode value as json: '{\"foo\":' from 'a:json={\"foo\":'" ]]
@@ -2151,14 +2276,24 @@ expected: $expected
   # references to missing files are errors
   # ... when used as keys
   run json @${missing_file:?}=value
+  echo "$status"
+  echo "${output@Q}"
   [[ $status == 4 && $output =~ \
-    "json(): failed to read file referenced by argument: '${missing_file:?}' from '@${missing_file:?}=value'" ]]
+    "json(): failed to read the file '${missing_file:?}' referenced as the key of argument '@${missing_file:?}=value'" ]]
 
   # ... and when used as values
   run json key@${missing_file:?}
-  echo "$output"
   [[ $status == 4 && $output =~ \
-    "json(): failed to read file referenced by argument: '${missing_file:?}' from 'key@${missing_file:?}'" ]]
+    "json(): failed to read the file '${missing_file:?}' referenced as the value of argument 'key@${missing_file:?}'" ]]
+
+  # Can't splat an object into an array
+  run json.array ...:{}=a=1,b=2,c=3
+  echo "${output@Q}"
+  [[ $status == 2 && $output =~ "json(): an array is being created, cannot ... splat an object into an array — '...:{}=a=1,b=2,c=3'" ]]
+  # Nor arrays into objects
+  run json ...:[,]=a,b,c
+  echo "${output@Q}"
+  [[ $status == 2 && $output =~ "json(): an object is being created, cannot ... splat an array into an object — '...:[,]=a,b,c'" ]]
 }
 
 @test "json errors are signaled in-band by writing a 0x18 Cancel control character" {
@@ -2269,9 +2404,9 @@ json(): failed to encode value as number: 'oops' from 'a:number=oops'
   exec 7<"${out_pipe:?}"  # open the in/out pipes
   exec 6>"${in_pipe:?}"
 
-  expect_read 7 '{"before":"I am first!","content":['
+  expect_read 7 '{"before":"I am first!","content"'
   json msg="Knock knock!" >&6
-  expect_read 7 '{"msg":"Knock knock!"}'
+  expect_read 7 ':[{"msg":"Knock knock!"}'
   json msg="Who is there?" >&6
   expect_read 7 ',{"msg":"Who is there?"}'
   exec 6>&-  # close the input
@@ -2300,9 +2435,9 @@ json(): failed to encode value as number: 'oops' from 'a:number=oops'
 
   # Generate the string value of the first property
   exec 6>"${in_string:?}"  # open the pipe that json is reading the string from
-  expect_read 7 '{"streamed_string":"'
+  expect_read 7 '{"streamed_string"'
   printf 'This is the ' >&6
-  expect_read 7 'This is the '
+  expect_read 7 ':"This is the '
   printf 'content of t' >&6
   expect_read 7 'content of t'
   printf 'he string.\n\n' >&6
@@ -2317,13 +2452,13 @@ json(): failed to encode value as number: 'oops' from 'a:number=oops'
   expect_read 7 'e. It could be quite long, but probably best not'
   exec 6>&-  # close in_key
 
-  expect_read 7 ' to do that.":"My property name is streamed","streamed_raw":'
+  expect_read 7 ' to do that.":"My property name is streamed","streamed_raw"'
 
   # Generate the raw value of the third property
   exec 6>"${in_raw:?}"
   printf '[' >&6
   json msg="I'm in ur script" >&6
-  expect_read 7 '[{"msg":"I'\''m in ur scrip'
+  expect_read 7 ':[{"msg":"I'\''m in ur scrip'
   printf ',' >&6
   json msg="generating JSON" >&6
   printf ']' >&6

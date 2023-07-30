@@ -502,7 +502,7 @@ function json.validate() {
 function json.encode_from_file() {
   # TODO: remove backwards compat
   if [[ ${array:-} == true ]]; then collection=array; fi
-  local entries=${entries:-}
+  local entries=${entries:-} prefix=${prefix:-}
   case "${type:?}_${collection:-}_${entries/true/entries}" in
   # There's not much point in implementing json.stream_encode_json() because
   # grep (which evaluates the validation regex) buffers the entire input in
@@ -512,12 +512,10 @@ function json.encode_from_file() {
   (@(string|number|bool|true|false|null|auto|raw|json)_object_entries)
     format=${object_format:?} json.stream_encode_object_entries || return $?                            ;;
   (@(string|number|bool|true|false|null|auto|raw|json)_array_*)
-    json.buffer_output '['
-    format=${array_format:?} json.stream_encode_array_entries || return $?
+    format=${array_format:?} prefix="${prefix?}[" json.stream_encode_array_entries || return $?
     json.buffer_output ']'                                                    ;;
   (@(string|number|bool|true|false|null|auto|raw|json)_object_*)
-    json.buffer_output '{'
-    format=${object_format:?} json.stream_encode_object_entries || return $?
+    format=${object_format:?} prefix="${prefix?}{" json.stream_encode_object_entries || return $?
     json.buffer_output '}'                                                    ;;
   (@(string|raw)_*)
     "json.stream_encode_${type:?}" || return $?                               ;;
@@ -593,8 +591,9 @@ function json._jevff_close_stdin() { exec 0<&-; }
 # chunks in memory, but not the file as a whole (so long as the caller flushes
 # their $out buffer via the $out_cb callback.)
 function json.stream_encode_array_entries() {
-  local _jsea_raw_chunks=() _jsea_encoded_chunks=() _jsea_caller_out=${out:-} \
-    _jsea_last_emit=4000000000 _jsea_separator=() _jsea_error='' _jseae_encode_entries_fn
+  local IFS=''; local _jsea_raw_chunks=() _jsea_encoded_chunks=() \
+    _jsea_caller_out=${out:-} _jsea_last_emit=4000000000 _jsea_error='' \
+    _jseae_encode_entries_fn _jsea_separator=(${prefix:-})  # prefix is not quoted to eliminate empty strings
   out=_jseae_encode_entries_fn collection=array format=${format:?} type=${type:?} \
     json.get_entry_encode_fn || return 1
   readarray -t -d "${split?}" -C json.__jsea_on_chunks_available \
@@ -989,6 +988,104 @@ function json.define_defaults() {
 }
 json.define_defaults __empty__ ''
 
+function json.get_empty_substitute_json() {
+  if [[ ${1?} =~ ^${_json_bash_type_name_pattern:1:-1}=(.*)$ ]]; then
+    "json.encode_${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+  else
+    json.encode_json "${1?}"
+  fi
+}
+
+# Resolve the action to take when an argument's value is empty.
+# See docs/plans/004-imperfect-inputs.md
+function json.resolve_empty_value_action() {
+  local -n _jreva_at=${attrs:?} _jreva_da=${default_attrs:?} _jreva_action=${action:?}
+  local _jreva_src=${_jreva_at['@val']:-str} \
+    _jreva_type=${_jreva_at['type']:-${_jreva_da['type']:-string}} \
+    _jreva_collection=${_jreva_at['collection']:-${_jreva_da['collection']:-}}
+
+  if [[ ${_jreva_collection?} == @(object|array) ]]; then
+    local _jreva_key_A="empty" \
+      _jreva_key_B="empty_${_jreva_src:?}_${_jreva_type:?}_${_jreva_collection:?}" \
+      _jreva_key_C="empty_${_jreva_src:?}_${_jreva_collection:?}" \
+      _jreva_key_D="empty_${_jreva_type:?}_${_jreva_collection:?}" \
+      _jreva_key_E="empty_${_jreva_collection:?}"
+  else
+    local _jreva_key_A="empty" \
+      _jreva_key_B="empty_${_jreva_src:?}_${_jreva_type:?}" \
+      _jreva_key_C="empty_${_jreva_src:?}" \
+      _jreva_key_D="empty_${_jreva_type:?}" \
+      _jreva_key_E="empty_${_jreva_type:?}" # no-op duplicate
+  fi
+  local -A _jreva_merged_actions=(
+    ["_${_jreva_da[$_jreva_key_A]+A}"]=${_jreva_da[$_jreva_key_A]:-}
+    ["_${_jreva_at[$_jreva_key_A]+A}"]=${_jreva_at[$_jreva_key_A]:-}
+    ["_${_jreva_da[$_jreva_key_B]+B}"]=${_jreva_da[$_jreva_key_B]:-}
+    ["_${_jreva_at[$_jreva_key_B]+B}"]=${_jreva_at[$_jreva_key_B]:-}
+    ["_${_jreva_da[$_jreva_key_C]+C}"]=${_jreva_da[$_jreva_key_C]:-}
+    ["_${_jreva_at[$_jreva_key_C]+C}"]=${_jreva_at[$_jreva_key_C]:-}
+    ["_${_jreva_da[$_jreva_key_D]+D}"]=${_jreva_da[$_jreva_key_D]:-}
+    ["_${_jreva_at[$_jreva_key_D]+D}"]=${_jreva_at[$_jreva_key_D]:-}
+    ["_${_jreva_da[$_jreva_key_E]+E}"]=${_jreva_da[$_jreva_key_E]:-}
+    ["_${_jreva_at[$_jreva_key_E]+E}"]=${_jreva_at[$_jreva_key_E]:-}
+  )
+  _jreva_action=\
+${_jreva_merged_actions['_A']:-\
+${_jreva_merged_actions['_B']:-\
+${_jreva_merged_actions['_C']:-\
+${_jreva_merged_actions['_D']:-\
+${_jreva_merged_actions['_E']:-}}}}}
+}
+
+# Resolve and apply the action to take when the argument's key is empty.
+# See docs/plans/004-imperfect-inputs.md
+function json.resolve_empty_key_action() {
+  local -n _jaeka_at=${attrs:?} _jaeka_da=${default_attrs:?} _jaeka_action=${action:?}
+  local IFS _jaeka_src=${_jaeka_at['@key']:-str}
+
+  local _jaeka_key_A='empty_key' _jaeka_key_B="empty_${_jaeka_src}_key" \
+    _jaeka_key_C="empty_${_jaeka_src}_string" _jaeka_key_D='empty_string'
+
+  local -A _jaeka_merged_actions=(
+    ["_${_jaeka_da[$_jaeka_key_A]+A}"]=${_jaeka_da[$_jaeka_key_A]:-}
+    ["_${_jaeka_at[$_jaeka_key_A]+A}"]=${_jaeka_at[$_jaeka_key_A]:-}
+    ["_${_jaeka_da[$_jaeka_key_B]+B}"]=${_jaeka_da[$_jaeka_key_B]:-}
+    ["_${_jaeka_at[$_jaeka_key_B]+B}"]=${_jaeka_at[$_jaeka_key_B]:-}
+    ["_${_jaeka_da[$_jaeka_key_C]+C}"]=${_jaeka_da[$_jaeka_key_C]:-}
+    ["_${_jaeka_at[$_jaeka_key_C]+C}"]=${_jaeka_at[$_jaeka_key_C]:-}
+    ["_${_jaeka_da[$_jaeka_key_D]+D}"]=${_jaeka_da[$_jaeka_key_D]:-}
+    ["_${_jaeka_at[$_jaeka_key_D]+D}"]=${_jaeka_at[$_jaeka_key_D]:-}
+  )
+  _jaeka_action=\
+${_jaeka_merged_actions['_A']:-\
+${_jaeka_merged_actions['_B']:-\
+${_jaeka_merged_actions['_C']:-\
+${_jaeka_merged_actions['_D']:-}}}}
+}
+
+function json.apply_empty_action() {
+  local -n _jaea_omit=${omit:?} _jaea_sub=${sub:?}
+  local _jaea_buff _jaea_msg action=${action?} name=${name:?} require_string=${require_string:-}
+
+  case ${action?} in
+  (error=*) _jaea_msg=${action/#error=/}                                     ;;&
+  (error|error=*)
+    echo "json(""): ${name:?} must be non-empty but is empty${_jaea_msg+" — "}${_jaea_msg:-}" >&2
+    return 1                                                                  ;;
+  (omit) _jaea_omit=true; return 2 ;;
+  (*)
+    out=_jaea_buff json.get_empty_substitute_json "${action?}" \
+      || { echo "json.apply_empty_action(): the empty value from ${name:?} should" \
+        "have been substituted, but the substitute value is not valid" >&2; return 1; }
+    IFS=''; _jaea_buff[0]="${_jaea_buff[*]}"
+    if [[ ${require_string?} == true && ! "${_jaea_buff[0]?}" =~ ^[$'\n\r\t ']*'"' ]]; then
+      echo "json.apply_empty_action(): the empty value from ${name:?} should have" \
+        "been substituted, but the substitute value is not a string — ${_jaea_buff[0]@Q}" >&2; return 1;
+    fi
+    _jaea_sub="${_jaea_buff[0]?}"                                             ;;
+  esac
+}
+
 # Encode arguments as JSON objects or arrays and print to stdout.
 #
 # Each argument is an entry in the JSON object or array created by the call.
@@ -996,12 +1093,11 @@ json.define_defaults __empty__ ''
 function json() {
   # vars referenced by arguments cannot start with _, so we prefix our own vars
   # with _ to prevent args referencing locals.
-  local IFS _collection _dashdash_seen _encode_fn _array_format _object_format \
-        _key _key_array _type _value _value_array _match _splat _split
+  local _array_format _collection _dashdash_seen _empty_key_action _empty_value_action _encode_fn _format _key _key_array _match _name _object_format _omit _omit='' _prefix _raw_key _splat _split _status _type _value _value_array IFS
 
-  local _caller_out=${out:-}
+  local _caller_out=${out:-} _our_out=${out:-} _key_buff=()
   if [[ ${json_stream:-} != true ]]
-  then local out=_json_buff _json_buff=(); fi
+  then local out=_json_buff _our_out=_json_buff _json_buff=(); fi
 
   if [[ "${json_defaults:-}" && ! ${_json_defaults["${json_defaults}"]:-} ]]; then
     json._error "json(): json.define_defaults has not been called for" \
@@ -1027,13 +1123,18 @@ function json() {
       json._error "json(): argument is not structured correctly: ${arg@Q}"; return 2;
     fi
     unset -n {_key,_value}{,_file} _value_array;
-    unset {_key,_value}{,_file} _value_array;
+    unset {_key,_value}{,_file} _value_array _empty_value_action _raw_key;
 
     _type=${_attrs[type]:-${_defaults[type]:-string}}
     _splat=${_attrs['splat']:-${_defaults['splat']:-}}
     _array_format=${_attrs['array_format']:-${_defaults['array_format']:-${_array_format:-raw}}}
-    if [[ $_splat == true ]] # splat always implies the arg is a collection
-    then _collection=${_json_return?}
+    if [[ $_splat == true ]]; then # splat always implies the arg is a collection
+      if [[ ${_attrs['collection']:-${_json_return?}} != "${_json_return:?}" ]]; then
+        json._error "json(): an ${_json_return:?} is being created, cannot ..." \
+          "splat an ${_attrs['collection']:?} into an ${_json_return:?} — ${arg@Q}";
+        return 2;
+      fi
+      _collection=${_json_return?}
     else _splat='' _collection=${_attrs['collection']:-${_defaults['collection']:-false}}; fi
     # If no value is set, provide a default
     if [[ ! ${_attrs[val]+isset} ]]; then # arg has no value
@@ -1076,8 +1177,11 @@ function json() {
 
           if [[ ! ${_key_file:-} =~ ^\.?/ ]]; then
             unset -n _key_file
-            json._error "json(): argument references unbound variable:" \
-              "\$${_attrs[key]} from ${arg@Q}"; return 3
+            if [[ ${_attrs['no_key']:-${_defaults['no_key']:-}} != empty ]]; then
+              json._error "json(): argument references unbound variable:" \
+                "\$${_attrs[key]} from ${arg@Q}"; return 3
+            fi
+            unset -n _key; _key=''
           fi
         fi
       fi
@@ -1105,8 +1209,11 @@ function json() {
 
           if [[ ! ${_value_file:-} =~ ^\.?/ ]]; then
             unset -n _value_file
-            json._error "json(): argument references unbound variable:" \
-              "\$${_attrs[val]} from ${arg@Q}"; return 3
+            if [[ ${_attrs['no_val']:-${_defaults['no_val']:-}} != empty ]]; then
+              json._error "json(): argument references unbound variable:" \
+                        "\$${_attrs[val]} from ${arg@Q}"; return 3
+            fi
+            unset -n _value; _value=''
           fi
         fi
       fi ;;
@@ -1114,44 +1221,138 @@ function json() {
     (str) _value=${_attrs[val]} _object_format=attrs ;;
     esac
 
-    if [[ ${_first:?} == true ]]; then _first=false
-    else json.buffer_output ","; fi
+    if [[ ${_first:?} == true ]]; then _prefix=()
+    else _prefix=(','); fi
 
     # Handle the common object string value case a little more efficiently
     if [[ $_type == string && $_json_return == object && $_collection == false \
+          && ${_key:-} && ${_value:-} \
           && ! ( ${_key_file:-} || ${_value_file:-} ) ]]; then
+      IFS=''; in=_prefix json.buffer_output
       join=':' json.encode_string "$_key" "$_value" || { json._error; return 1; }
-      continue
+      _first=false; continue
+    fi
+
+    # Handle empty inputs
+    if [[ ${_key_file:-} ]]; then
+      # we only detect empty files when writing, so we always need their action
+      action=_empty_key_action attrs=_attrs default_attrs=_defaults \
+        json.resolve_empty_key_action
+    elif [[ $_json_return == object \
+            && ! ( ${_splat} == true && ${_attrs[@key]:-} == '' ) \
+            && ( ! ${_key:-} || ( -R _key_array && ${#_key_array} == 0 ) ) ]]; then
+      action=_empty_key_action attrs=_attrs default_attrs=_defaults \
+        json.resolve_empty_key_action
+
+      if [[ ${_attrs['@key']:-} == 'var' ]]; then _name="the variable referenced as the key of argument ${arg@Q}"; else _name="the key of argument ${arg@Q}"; fi
+      if ! sub=_raw_key omit=_omit require_string=true name=${_name:?} \
+          action="${_empty_key_action?}" json.apply_empty_action; then
+        if [[ ${_omit?} == true ]]; then continue; fi
+        json._error "json(): could not encode the key of argument ${arg@Q}"; return 1
+      fi
+    fi
+    if [[ ${_value_file:-} ]]; then
+      action=_empty_value_action attrs=_attrs default_attrs=_defaults \
+        json.resolve_empty_value_action
+    elif [[ ! ( ${_value:-} || ( -R _value_array && ${#_value_array[@]} != 0 ) ) ]]; then
+      action=_empty_value_action attrs=_attrs default_attrs=_defaults \
+        json.resolve_empty_value_action
+
+      if [[ ${_attrs['@val']} == 'var' ]]; then _name="the variable referenced as the value of argument ${arg@Q}"; else _name="the value of argument ${arg@Q}"; fi
+      unset -n _value
+      if ! sub=_value omit=_omit name=${_name:?} \
+          action="${_empty_value_action?}" json.apply_empty_action; then
+        if [[ ${_omit?} == true ]]; then continue; fi
+        json._error "json(): could not encode the value of argument ${arg@Q}"; return 1
+      fi
+      # _type=raw  # substitute value has been validated as JSON already
+      # Because default values are pre-encoded JSON, they must use the json
+      # format. We use json type for splat defaults so that non-collection values
+      # will fail when encoding, as we don't enforce collection defaults for splat
+      # arguments currently.
+      # if [[ ${_splat?} == true ]]; then _object_format=json _array_format=json _type=json; fi
+
+      if [[ ${_splat?} == true ]]; then _object_format=json _array_format=json _type=json;
+      else _type=raw _collection=false; fi # substitute value is pre-encoded
     fi
 
     if [[ $_json_return == object && $_splat != true ]]; then
-      if [[ ${_key_file:-} ]]
-      then json.stream_encode_string < "${_key_file:?}" || {
-        json._error "json(): failed to read file referenced by argument:" \
-          "${_key_file@Q} from ${arg@Q}"; return 4; }
-      else json.encode_string "$_key" || { json._error; return 1; } ; fi
-      json.buffer_output ":"
+      # We must buffer the key when a file value could be omitted, as we don't
+      # know whether it will be until we try to write it.
+      if [[ ${_empty_value_action:-} == omit && ${_value_file:-} ]]; then
+        _key_buff=() out=_key_buff  # temporarily buffer into _key_buff to capture the key
+      fi
+
+      if [[ ${_raw_key:-} ]]; then
+        json.buffer_output "${_prefix[@]}" "${_raw_key:?}"
+      elif [[ ${_key_file:-} ]]; then
+        _status=0;
+        if ! { { prefix=${_prefix[0]:-} json.stream_encode_string || _status=$? ; } \
+               < "${_key_file:?}"; }; then
+          if [[ ${_attrs['no_key']:-${_defaults['no_key']:-}} != empty ]];
+          then _status=1; else _status=10; fi
+        fi
+        if [[ $_status == 10 ]]; then  # 10 means 0-length file
+          if ! sub=_raw_key omit=_omit require_string=true name="argument ${arg@Q} key" \
+              action="${_empty_key_action?}" json.apply_empty_action; then
+            if [[ ${_omit?} == true ]]; then
+              out="${_our_out?}" # restore out in case we were buffering the key
+              continue
+            fi
+            json._error "json(): could not encode the key of argument ${arg@Q}"; return 1
+          fi
+          json.buffer_output "${_prefix[@]}" "${_raw_key:?}"
+        elif [[ $_status != 0 ]]; then
+          json._error "json(): failed to read the file ${_key_file@Q}" \
+            "referenced as the key of argument ${arg@Q}"; return 4;
+        fi
+      else
+        in=_prefix json.buffer_output
+        json.encode_string "$_key" || { json._error; return 1; } ;
+      fi
+
+      _prefix=(":")
+      # Per the above note, store the buffered key in prefix so it can be
+      # emitted only if the file value is emitted.
+      if [[ ${_empty_value_action:-} == omit && ${_value_file:-} ]]; then
+        IFS=''; _prefix=("${_key_buff[*]}${_prefix[0]:-}") out="${_our_out?}"
+      fi
     fi
-    local _status=0
-    _encode_fn="json.encode_${_type:?}"
     if [[ ${_value_file:-} ]]; then
+      _status=0
       if [[ ${_attrs[split]+isset} ]]; then _split=${_attrs[split]}
       elif [[ ${_collection} == @(array|object) ]]; then _split=$'\n';
       else _split=''; fi
       _object_format=${_attrs['object_format']:-${_defaults['object_format']:-${_object_format:?}}}
 
-      if ! { { collection=${_collection:?} object_format=${_object_format:?} \
-              array_format=${_array_format:?} type=${_type:?} \
-              entries=${_splat?} split=${_split?} json.encode_from_file \
+      if ! { { collection=${_collection:?} entries=${_splat?} \
+               object_format=${_object_format:?} array_format=${_array_format:?} \
+               prefix=${_prefix[0]:-} split=${_split?} type=${_type:?} \
+               json.encode_from_file \
               || _status=$?; } < "${_value_file:?}"; }; then
-        json._error "json(): failed to read file referenced by argument:" \
-          "${_value_file@Q} from ${arg@Q}"; return 4
+        if [[ ${_attrs['no_val']:-${_defaults['no_val']:-}} != empty ]]; then
+          json._error "json(): failed to read the file ${_value_file@Q}" \
+            "referenced as the value of argument ${arg@Q}"; return 4
+        fi
+        _status=10  # 10 means 0-length file
       fi
-      if [[ $_status != 0 ]]; then
+      if [[ $_status == 10 ]]; then
+        unset -n _value
+        if ! sub=_value omit=_omit name="the file referenced as the value of argument ${arg@Q}" \
+            action="${_empty_value_action?}" json.apply_empty_action; then
+          if [[ ${_omit?} == true ]]; then continue; fi
+          json._error "json(): could not encode the value of argument ${arg@Q}"; return 1
+        fi # write the value substituting for the empty file
+
+        if [[ ${_splat?} == true ]]; then _object_format=json _array_format=json _type=json;
+        else _type=raw _collection=false; fi # substitute value is pre-encoded
+      elif [[ $_status != 0 ]]; then
         json._error "json(): failed to encode file contents as ${_type:?}:" \
           "${_value_file@Q} from ${arg@Q}"; return 1
       fi
-    else
+    fi
+    if [[ ! ${_value_file:-} || ${_status:?} == 10 ]]; then
+      _status=0 _encode_fn="json.encode_${_type:?}"
       if [[ ${_collection:?} == @(array|object) ]]; then
         if [[ ! -R _value_array ]]; then # if the value isn't an array, split it
           if [[ ${_attrs[split]+isset} ]]; then _split=${_attrs[split]}
@@ -1166,9 +1367,10 @@ function json() {
             return 2
           fi
           if [[ $_splat == true ]]; then
+            in=_prefix json.buffer_output
             join=, in=_value_array type=${_type:?} "$_encode_fn" || _status=$?;
           else
-            json.buffer_output '['
+            json.buffer_output "${_prefix[@]}" '['
             join=, in=_value_array type=${_type:?} "$_encode_fn" || _status=$?;
             json.buffer_output "]"
           fi
@@ -1184,6 +1386,7 @@ function json() {
             fi
           fi
           if [[ $_splat == true ]]; then
+            in=_prefix json.buffer_output
             # A key and value array can be used to define entries
             if [[ -R _key_array && -R _value_array && ${_key_array@a} == *a* \
                   && ${_value_array@a} == *a* ]]; then
@@ -1192,17 +1395,21 @@ function json() {
               join='' in=_value_array type=${_type} "${_encode_fn:?}" || _status=$?;
             fi
           else
-            json.buffer_output '{'
+            json.buffer_output "${_prefix[@]}" '{'
             join='' in=_value_array type=${_type} "${_encode_fn:?}" || _status=$?;
             json.buffer_output "}"
           fi
         fi
-      else "$_encode_fn" "${_value}" || _status=$?; fi
+      else
+        in=_prefix json.buffer_output
+        "$_encode_fn" "${_value}" || _status=$?;
+      fi
       if [[ $_status != 0 ]]; then
         json._error "json(): failed to encode value as ${_type:?}:" \
           "${_value[*]@Q} from ${arg@Q}"; return 1
       fi
     fi
+    _first=false
   done
 
   if [[ $_json_return == object ]]; then json.buffer_output '}'
