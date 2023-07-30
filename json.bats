@@ -942,7 +942,7 @@ function get_object_encode_examples() {
   # We trim whitespace when reading all types, except string and raw values.
   # e.g. json output is terminated by a newline
   diff <(json) <(printf '{}\n')
-  # But the newline is trimed when inserting one json call into another:
+  # But the newline is trimmed when inserting one json call into another:
   diff <(json a:json@<(json)) <(printf '{"a":{}}\n')
   # Notice that the shell's own command substitution does the same thing
   diff <(json a:json="$(json)") <(printf '{"a":{}}\n')
@@ -950,8 +950,8 @@ function get_object_encode_examples() {
   # support trailing whitespace json.encode_number:
   diff <(json a:number="$(echo 1)" b:number@<(echo 2)) <(printf '{"a":1,"b":2}\n')
   # And similarly, arrays of numbers are trimmed of whitespace with the default
-  # newline delimiter
-  diff <(json a:number[]="$(seq 2)" b:number[]@<(seq 2)) <(printf '{"a":[1,2],"b":[1,2]}\n')
+  # newline delimiter. (Inline values require an explicit \n to split on \n.)
+  diff <(json a:number[$'\n']="$(seq 2)" b:number[]@<(seq 2)) <(printf '{"a":[1,2],"b":[1,2]}\n')
 
   # The first exception is string values, which preserve trailing newlines. This
   # is the default behaviour because a string exactly represents a text file's
@@ -961,12 +961,12 @@ function get_object_encode_examples() {
   diff <(json nl@<(printf 'foo\n')) <(printf '{"nl":"foo\\n"}\n')
   diff <(json no_nl@<(echo -n 'foo')) <(printf '{"no_nl":"foo"}\n')
 
-  # The second execption is raw values. The raw type serves as an escape hatch,
+  # The second exception is raw values. The raw type serves as an escape hatch,
   # passing JSON as-is, without validation, so it seems natural to not modify
   # their data by trimming newlines.
   diff <(json formatted:raw@<(printf '\n{\n  "msg": "hi"\n}\n')) \
        <(printf '{"formatted":\n{\n  "msg": "hi"\n}\n}\n')
-  # Note that, when creating raw arrays with the (default) newline delmiter, the
+  # Note that, when creating raw arrays with the (default) newline delimiter, the
   # delimiter is removed from the each value. This is the same as for arrays of
   # all types — the delimiter is not considered to be part of the value.
   diff <(json formatted:raw[]@<(printf '{}\n[]\n"hi"\n')) \
@@ -1592,22 +1592,30 @@ expected: $expected
   json names:[:]="Alice:Bob:Dr Chris" \
     | equals_json '{names: ["Alice", "Bob", "Dr Chris"]}'
 
-  # The default split character is line feed (\n), so each line is an array
-  # element. This integrates with line-oriented command-line tools:
-  json sizes:[]="$(seq 3)" | equals_json '{sizes: ["1","2","3"]}'
-  json sizes:number[]="$(seq 3)" | equals_json '{sizes: [1, 2, 3]}'
+  # The default split character for arguments with inline values or variable
+  # references is \x00 or `''`, so their values are not split unless a split
+  # character is specified.
+  json sizes:[]="$(seq 3)" | equals_json '{sizes: ["1\n2\n3"]}'
+  json sizes:[$'\n']="$(seq 3)" | equals_json '{sizes: ["1","2","3"]}'
+  json sizes:number[$'\n']="$(seq 3)" | equals_json '{sizes: [1, 2, 3]}'
 
-  # The same applies when reading arrays from files
+  # Whereas the default split character for file references is line feed (\n),
+  # so each line is an array element. This integrates with line-oriented
+  # command-line tools:
+  json sizes:number[]@<(seq 3) | equals_json '{sizes: [1, 2, 3]}'
   # (Note that <(seq 3) is a shell construct (process substitution) that prints
   # the path to a file containing the output of the `seq 3` command (1 2 3 on
   # separate lines.)
-  json sizes:number[]@<(seq 3) | equals_json '{sizes: [1, 2, 3]}'
 
-  # [:] is shorthand for [split=:]
+  # [:] is shorthand for /split=:/
   json names:[]/split=:/="Alice:Bob:Dr Chris" \
     | equals_json '{names: ["Alice", "Bob", "Dr Chris"]}'
   # The last split value wins when used more than once
   json sizes:number[:]/split=!,split=///=1/2/3 | equals_json '{sizes: [1, 2, 3]}'
+
+  # [] is shorthand for /collection=array/
+  json names:/collection=array,split=:/="Alice:Bob:Dr Chris" \
+    | equals_json '{names: ["Alice", "Bob", "Dr Chris"]}'
 
   # To split on null bytes, use split= (empty string). When used with inline and
   # bash values this effectively inhibits splitting, because bash variables
@@ -1690,7 +1698,7 @@ expected: $expected
     username=foo json @username:{}=id=u456,name=Foo
   ) | equals_json '{"l4h":{"id":"u789"},"h4l":{"id":"u123","name":"Hal"},"foo":{"id":"u456","name":"Foo"}}'
 
-  json ...:json{:json}/split=/='{
+  json ...:json{:json}='{
     "file": "src/main/frob.sh",
     "labels": [
       "foo=bar",

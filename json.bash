@@ -1030,7 +1030,7 @@ function json() {
       if [[ ${_collection:?} == @(array|object) ]]; then
         if [[ ! -R _value_array ]]; then # if the value isn't an array, split it
           if [[ ${_attrs[split]+isset} ]]; then _split=${_attrs[split]}
-          else _split=$'\n'; fi
+          else _split=''; fi
           IFS=${_split}; _value_array=(${_value})  # intentional splitting
         fi
 
