@@ -532,11 +532,18 @@ function json.encode_from_file() {
 # Encode the contents of a file as a JSON string, without buffering the whole
 # value.
 function json.stream_encode_string() {
-  local _jses_chunk _jses_encoded IFS='' eof=
-  json.buffer_output '"'
+  local _jses_chunk _jses_encoded IFS='' eof='' \
+    json_chunk_size=${json_chunk_size:-8191} prefix=${prefix:-}
+
+  read -r -d '' -N "${json_chunk_size:?}" _jses_chunk || eof=true
+  if [[ ${#_jses_chunk} == 0 ]]; then return 10; fi
+  out=_jses_encoded json.encode_string "${_jses_chunk?}"
+  json.buffer_output ${prefix?} '"' "${_jses_encoded[0]:1:-1}" # strip the quotes
+  "${out_cb:-:}"
+
   while [[ ! $eof ]]; do
     _jses_encoded=()
-    read -r -d '' -N "${json_chunk_size:-8191}" _jses_chunk || eof=true
+    read -r -d '' -N "${json_chunk_size:?}" _jses_chunk || eof=true
     out=_jses_encoded json.encode_string "${_jses_chunk?}"
     json.buffer_output "${_jses_encoded[0]:1:-1}" # strip the quotes
     "${out_cb:-:}"
@@ -552,16 +559,15 @@ function json.stream_encode_string() {
 # as function does no validation of the content, other than failing if the whole
 # file is empty.
 function json.stream_encode_raw() {
-  local _jser_chunk eof=
-  read -r -d '' -N "${json_chunk_size:-8191}" _jser_chunk || eof=true
-  if [[ ! $_jser_chunk ]]; then
-    echo "json.stream_encode_raw(): raw JSON value is empty" >&2; return 1
-  fi
-  json.buffer_output "${_jser_chunk}"
+  local _jser_chunk eof= json_chunk_size=${json_chunk_size:-8191} \
+    IFS prefix=${prefix:-}
+  read -r -d '' -N "${json_chunk_size:?}" _jser_chunk || eof=true
+  if [[ ! $_jser_chunk ]]; then return 10; fi
+  IFS=''; json.buffer_output ${prefix?} "${_jser_chunk?}"
   "${out_cb:-:}"
   while [[ ! $eof ]]; do
-    read -r -d '' -N "${json_chunk_size:-8191}" _jser_chunk || eof=true
-    json.buffer_output "${_jser_chunk}"
+    read -r -d '' -N "${json_chunk_size:?}" _jser_chunk || eof=true
+    json.buffer_output "${_jser_chunk?}"
     "${out_cb:-:}"
   done
 }
@@ -570,11 +576,13 @@ function json.stream_encode_raw() {
 #
 # This function buffers the entire value in memory.
 function json.encode_value_from_file() {
-  local _jevff_chunk
+  local _jevff_chunk prefix=${prefix:-} IFS
   # close stdin after reading 1 chunk — we ignore anything after the first null
   # byte. Note: read without -N trims trailing newlines, which we want.
   read -r -d '' _jevff_chunk || true
-  "json.encode_${type:?}" "${_jevff_chunk}"
+  if [[ ! ${_jevff_chunk?} ]]; then return 10; fi
+  if [[ ${prefix?} ]]; then IFS=''; json.buffer_output ${prefix?}; fi
+  "json.encode_${type:?}" "${_jevff_chunk?}"
 }
 function json._jevff_close_stdin() { exec 0<&-; }
 
@@ -586,12 +594,16 @@ function json._jevff_close_stdin() { exec 0<&-; }
 # their $out buffer via the $out_cb callback.)
 function json.stream_encode_array_entries() {
   local _jsea_raw_chunks=() _jsea_encoded_chunks=() _jsea_caller_out=${out:-} \
-    _jsea_last_emit=4294967295 _jsea_separator=() _jsea_error='' _jseae_encode_entries_fn
+    _jsea_last_emit=4000000000 _jsea_separator=() _jsea_error='' _jseae_encode_entries_fn
   out=_jseae_encode_entries_fn collection=array format=${format:?} type=${type:?} \
     json.get_entry_encode_fn || return 1
   readarray -t -d "${split?}" -C json.__jsea_on_chunks_available \
     -c "${json_buffered_chunk_count:-1024}" _jsea_raw_chunks
+
+  if [[ ${_jsea_last_emit?} == 4000000000 && ${#_jsea_raw_chunks[@]} == 0 ]];
+  then return 10; fi
   if [[ $_jsea_error ]]; then return 1; fi
+
   unset "_jsea_raw_chunks[$_jsea_last_emit]"
   if [[ ${#_jsea_raw_chunks[@]} != 0 ]]; then
     local _jsea_indexes=("${!_jsea_raw_chunks[@]}")
@@ -617,23 +629,24 @@ function json.__jsea_on_chunks_available() {
     _jsea_error=true
     return
   fi
-  _jsea_raw_chunks=()
-  : "${_jsea_separator:=,}" # separate chunks with , after the first write
+  _jsea_raw_chunks=() _jsea_separator=(',') # separate chunks with , after the first write
   "${out_cb:-:}" # call the out_cb, if provided
 }
 
 function json.stream_encode_object_entries() {
-  local format=${format:-}
-  local _jseoe_raw_chunks=() _jseoe_encoded_chunks=() _jseoe_caller_out=${out:-} \
-    _jseoe_last_emit=4294967295 _jseoe_buff=() _jseoe_error='' \
-    _jseoe_encode_entries_fn=
+  local IFS=''; local _jseoe_raw_chunks=() _jseoe_encoded_chunks=() \
+    _jseoe_caller_out=${out:-} _jseoe_last_emit=4000000000 _jseoe_buff=(${prefix:-}) \
+    _jseoe_error='' _jseoe_encode_entries_fn
   out=_jseoe_encode_entries_fn collection=object format=${format:?} \
        type=${type:?} json.get_entry_encode_fn || return 1
 
   readarray -t -d "${split?}" -C json._jseoe_encode_chunks \
     -c "${json_buffered_chunk_count:-1024}" _jseoe_raw_chunks
 
+  if [[ ${_jseoe_last_emit?} == 4000000000 && ${#_jseoe_raw_chunks[@]} == 0 ]]
+  then return 10; fi
   if [[ $_jseoe_error ]]; then return 1; fi
+
   unset "_jseoe_raw_chunks[$_jseoe_last_emit]"
   if [[ ${#_jseoe_raw_chunks[@]} != 0 ]]; then
     local _jseoe_indexes=("${!_jseoe_raw_chunks[@]}")

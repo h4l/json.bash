@@ -603,16 +603,21 @@ function assert_input_encodes_to_output_under_all_calling_conventions() {
 @test "json.stream_encode_string" {
   local json_chunk_size=2 buff=()
   for json_chunk_size in '' 2; do
+  for prefix in '' '"foo  bar":'; do
     run json.stream_encode_string < <(printf 'foo')
-    [[ $status == 0 && $output == '"foo"' ]]
+    [[ $status == 0 && $output == "${prefix?}"'"foo"' ]]
 
     run json.stream_encode_string < <(printf 'foo bar\nbaz boz\nabc')
-    [[ $status == 0 && $output == '"foo bar\nbaz boz\nabc"' ]]
-  done
+    [[ $status == 0 && $output == "${prefix?}"'"foo bar\nbaz boz\nabc"' ]]
+  done done
+
+  # encoding an empty files emits nothing and returns 10
+  prefix=',' buff=() status=0
+  out=buff json.stream_encode_string < <(printf '') || status=$?
+  [[ ${#buff[@]} == 0 && $status == 10 ]]
 
   # out_cb names a function that's called for each encoded chunk
-  stdout_file=$(mktemp_bats)
-  json_chunk_size=2
+  stdout_file=$(mktemp_bats) json_chunk_size=2 buff=() prefix=''
   out=buff out_cb=__json.stream_encode_cb json.stream_encode_string \
     < <(printf 'abcdefg') > "${stdout_file:?}"
 
@@ -632,22 +637,23 @@ function __json.stream_encode_cb() {
 @test "json.stream_encode_raw" {
   local json_chunk_size=2 buff=()
   for json_chunk_size in '' 2; do
-    # As with json.encode_raw, it fails if the input is empty
-    run json.stream_encode_raw < <(printf '')
-    [[ $status == 1 && $output == \
-      'json.stream_encode_raw(): raw JSON value is empty' ]]
+  for prefix in '' '"foo  bar":'; do
+    # encoding an empty files emits nothing and returns 10
+    status=0 buff=()
+    out=buff json.stream_encode_raw < <(printf '') || status=$?
+    [[ ${#buff[@]} == 0 && $status == 10 ]]
 
     run json.stream_encode_raw < <(printf '{"foo":true}')
     echo "$status $output"
-    [[ $status == 0 && $output == '{"foo":true}' ]]
+    [[ $status == 0 && $output == "${prefix?}"'{"foo":true}' ]]
 
     # Trailing newlines are not striped from file contents
     diff <(json.stream_encode_raw < <(printf '{\n  "foo": true\n}\n')) \
-         <(printf '{\n  "foo": true\n}\n')
-  done
+         <(printf '%s{\n  "foo": true\n}\n' "${prefix?}")
+  done done
 
   # out_cb names a function that's called for each encoded chunk
-  stdout_file=$(mktemp_bats)
+  stdout_file=$(mktemp_bats) buff=() prefix=''
   json_chunk_size=2
   out=buff out_cb=__json.stream_encode_cb json.stream_encode_raw \
     < <(printf '["abc"]') > "${stdout_file:?}"
@@ -682,32 +688,38 @@ function get_value_encode_examples() {
 }
 
 @test "json.encode_value_from_file" {
-  local actual buff json_chunk_size=8 cb_count=0
+  local expected buff json_chunk_size=8 cb_count=0 prefix IFS
   local example_names; local -A examples; get_value_encode_examples
 
   for name in "${example_names[@]:?}"; do
+  for prefix in '' '"foo  bar":'; do
     type=${examples[${name}_type]:-${name:?}}
 
     # json.encode_value_from_file trims whitespace from the file contents before
     # encoding.
     if [[ $name == string_notrim ]]; then continue; fi
 
+    # encoding an empty files emits nothing and returns 10
+    status=0 buff=()
+    out=buff json.encode_value_from_file < <(printf '') || status=$?
+    [[ ${#buff[@]} == 0 && $status == 10 ]]
+
     # output to stdout
     out='' type=${type:?} run json.encode_value_from_file \
       < <(echo -n "${examples["${name:?}_in"]}" )
-    [[ $status == 0 && $output == "${examples[${name:?}_out]:?}" ]]
+    [[ $status == 0 && $output == "${prefix?}${examples[${name:?}_out]:?}" ]]
 
     # output to array
     buff=()
     out=buff type=${type:?} json.encode_value_from_file \
       < <(echo -n "${examples["${name:?}_in"]}" )
 
-    printf "expected:\n%s\n" "${examples[${name:?}_out]:?}"
-    printf "actual:\n%s\n" "${buff[0]}"
+    IFS=''; expected=(${prefix?} "${examples[${name:?}_out]:?}")
+    echo "expected: ${expected[@]@Q}"
+    echo "actual: ${buff[@]@Q}"
 
-    [[ $status == 0 && ${#buff[@]} == 1 \
-      && ${buff[0]} == "${examples[${name:?}_out]:?}" ]]
-  done
+    assert_array_equals expected buff
+  done done
 }
 
 @test "json.encode_value_from_file :: stops reading after null byte" {
@@ -717,11 +729,12 @@ function get_value_encode_examples() {
 }
 
 @test "json.encode_from_file :: single value" {
-  local actual buff json_chunk_size=8 cb_count
+  local IFS actual buff json_chunk_size=8 cb_count
   local tmp=$(mktemp_bats)
   local example_names; local -A examples; get_value_encode_examples
 
   for name in "${example_names[@]:?}"; do
+  for prefix in '' '"foo bar",'; do
     type=${examples[${name}_type]:-${name:?}}
 
     # When encoding strings, json.encode_from_file always uses
@@ -733,7 +746,7 @@ function get_value_encode_examples() {
     cb_count=0
     type=${type:?} out_cb=_increment_cb_count json.encode_from_file \
       < <(echo -n "${examples["${name:?}_in"]}" ) > "${tmp:?}"
-    echo -n "${examples[${name:?}_out]:?}" | diff - "${tmp:?}"
+    diff <(echo -n "${prefix?}${examples[${name:?}_out]:?}") "${tmp:?}"
     [[ $cb_count == ${examples[${name:?}_cb]:-0} ]]
 
     # output to array
@@ -741,9 +754,9 @@ function get_value_encode_examples() {
     out=buff type=${type:?} out_cb=_increment_cb_count json.encode_from_file \
       < <(echo -n "${examples["${name:?}_in"]}" )
     printf -v actual '%s' "${buff[@]}"
-    [[ $actual == "${examples[${name:?}_out]:?}" ]]
+    [[ $actual == "${prefix?}${examples[${name:?}_out]:?}" ]]
     [[ $cb_count == ${examples[${name:?}_cb]:-0} ]]
-  done
+  done done
 }
 
 function _increment_cb_count() { let ++cb_count; }
@@ -780,12 +793,21 @@ function get_array_encode_examples() {
 
   for type in "${example_names[@]:?}"; do
   for format in "${format_names[@]:?}"; do
+  for prefix in '' '"foo bar",'; do
     # output to stdout
     cb_count=0
-    collection=array split=$'\n' out_cb=_increment_cb_count array_format=${format:?} \
-      json.encode_from_file \
+    collection=array split=$'\n' out_cb=_increment_cb_count \
+      array_format=${format:?} json.encode_from_file \
       < <(echo -n "${examples["${format:?}_${type:?}_in"]}" ) > "${tmp:?}"
-    diff <(echo -n "[${examples[${type:?}_out]:?}]") "${tmp:?}"
+    diff <(echo -n "${prefix?}[${examples[${type:?}_out]:?}]") "${tmp:?}"
+    [[ $cb_count == 2 ]]
+
+    # entries only to stdout
+    cb_count=0
+    collection=array split=$'\n' out_cb=_increment_cb_count \
+      array_format=${format:?} entries=true json.encode_from_file \
+      < <(echo -n "${examples["${format:?}_${type:?}_in"]}" ) > "${tmp:?}"
+    diff <(echo -n "${prefix?}${examples[${type:?}_out]:?}") "${tmp:?}"
     [[ $cb_count == 2 ]]
 
     # output to array
@@ -794,9 +816,18 @@ function get_array_encode_examples() {
       array_format=${format:?} json.encode_from_file \
       < <(echo -n "${examples["${format:?}_${type:?}_in"]}" )
     printf -v actual '%s' "${buff[@]}"
-    [[ "${actual:?}" == "[${examples[${type:?}_out]:?}]" ]]
+    [[ "${actual:?}" == "${prefix?}[${examples[${type:?}_out]:?}]" ]]
     [[ $cb_count == 2 ]]
-  done done
+
+    # entries only to array
+    buff=() cb_count=0
+    out=buff collection=array split=$'\n' out_cb=_increment_cb_count \
+      array_format=${format:?} entries=true json.encode_from_file \
+      < <(echo -n "${examples["${format:?}_${type:?}_in"]}" )
+    printf -v actual '%s' "${buff[@]}"
+    [[ "${actual:?}" == "${prefix?}${examples[${type:?}_out]:?}" ]]
+    [[ $cb_count == 2 ]]
+  done done done
 }
 
 function get_object_encode_examples() {
@@ -820,12 +851,21 @@ function get_object_encode_examples() {
 
   for type in "${example_names[@]:?}"; do
   for format in "${format_names[@]:?}"; do
+  for prefix in '' '"foo bar",'; do
     # output to stdout
     cb_count=0
     collection=object split=$'\n' out_cb=_increment_cb_count \
       object_format=${format:?} json.encode_from_file \
       < <(echo -n "${examples["${format:?}_${type:?}_in"]}" ) > "${tmp:?}" 2>&1
-    diff <(echo -n "{${examples[${type:?}_out]:?}}") "${tmp:?}"
+    diff <(echo -n "${prefix?}{${examples[${type:?}_out]:?}}") "${tmp:?}"
+    [[ $cb_count == 2 ]]
+
+    # entries only to stdout
+    cb_count=0
+    collection=object split=$'\n' out_cb=_increment_cb_count \
+      entries=true object_format=${format:?} json.encode_from_file \
+      < <(echo -n "${examples["${format:?}_${type:?}_in"]}" ) > "${tmp:?}" 2>&1
+    diff <(echo -n "${prefix?}${examples[${type:?}_out]:?}") "${tmp:?}"
     [[ $cb_count == 2 ]]
 
     # output to array
@@ -833,9 +873,17 @@ function get_object_encode_examples() {
     out=buff collection=object split=$'\n' out_cb=_increment_cb_count \
       object_format=${format:?} json.encode_from_file \
       < <(echo -n "${examples["${format:?}_${type:?}_in"]}" )
-    diff <(printf '%s' "${buff[@]}") <(echo -n "{${examples[${type:?}_out]:?}}")
+    diff <(printf '%s' "${buff[@]}") <(echo -n "${prefix?}{${examples[${type:?}_out]:?}}")
     [[ $cb_count == 2 ]]
-  done done
+
+    # entries only to array
+    buff=() cb_count=0
+    out=buff collection=object split=$'\n' out_cb=_increment_cb_count \
+      entries=true object_format=${format:?} json.encode_from_file \
+      < <(echo -n "${examples["${format:?}_${type:?}_in"]}" )
+    diff <(printf '%s' "${buff[@]}") <(echo -n "${prefix?}${examples[${type:?}_out]:?}")
+    [[ $cb_count == 2 ]]
+  done done done
 }
 
 @test "json.stream_encode_array_entries :: stops reading file on error" {
@@ -848,13 +896,39 @@ function get_object_encode_examples() {
     "1,2,json.encode_number(): not all inputs are numbers: '3' 'y'" ]]
 }
 
+@test "json.stream_encode_array_entries :: empty file convention" {
+  local buff json_buffered_chunk_count=2 prefix status expected IFS
+  # When the input file is empty, the function emits nothing and exits with 10
+  for prefix in '' '"foo bar":['; do
+    status=0 buff=()
+    out=buff type=number format=raw split=$'\n' json.stream_encode_array_entries \
+      < <(printf '') || status=$?
+    [[ $status == 10 && ${#buff[@]} == 0 ]]
+
+    # short files less than the chunk count are not mistaken for empty files
+    IFS=''; status=0 buff=() expected=(${prefix?} '42')
+    out=buff type=number format=raw split=$'\n' json.stream_encode_array_entries \
+      < <(printf '42\n') || status=$?
+
+    [[ $status == 0 ]];
+    assert_array_equals expected buff
+
+    # A file with one empty-string chunk is an error rather than empty
+    IFS=''; status=0 buff=()
+    out=buff type=number format=raw split=$'\n' json.stream_encode_array_entries \
+      < <(printf '\n') || status=$?
+
+    [[ $status == 1 ]];
+  done
+}
+
 @test "json.stream_encode_array_entries :: json_buffered_chunk_count=1 callback" {
   local format=raw
   # json_buffered_chunk_count=1 results in readarray invoking the chunks
   # available callback with an empty array, which is a bit of an edge case.
   json_buffered_chunk_count=1 split=$'\n' type=string \
     run json.stream_encode_array_entries < <(printf '' )
-  [[ $status == 0 && $output == '' ]]
+  [[ $status == 10 && $output == '' ]]  # empty input file = status 10
   json_buffered_chunk_count=1 split=$'\n' type=string \
     run json.stream_encode_array_entries < <(printf 'foo\n' )
   [[ $status == 0 && $output == '"foo"' ]]
@@ -868,29 +942,22 @@ function get_object_encode_examples() {
   local example_names format_names; local -A examples; get_array_encode_examples
   for type in "${example_names[@]:?}"; do
   for format in "${format_names[@]:?}"; do
-    # Empty file
-    split=$'\n' type=${type:?} run json.stream_encode_array_entries < <(echo -n '' )
-    [[ $status == 0 && $output == "" ]]
-
-    buff=() output=''
-    out=buff split=$'\n' type=${type:?} json.stream_encode_array_entries < <(echo -n '' )
-    printf -v output '%s' "${buff[@]}"
-    [[ $status == 0 && $output == "" ]]
-
+  for prefix in '' '"foo bar":['; do
     # Non-empty file
     split=$'\n' type=${type:?} run json.stream_encode_array_entries \
       < <(echo -n "${examples["${format:?}_${type:?}_in"]}" )
-    [[ $status == 0 && $output == "${examples[${type:?}_out]:?}" ]]
+    declare -p status output
+    [[ $status == 0 && $output == "${prefix?}${examples[${type:?}_out]:?}" ]]
 
     buff=() output=''
     out=buff split=$'\n' type=${type:?} json.stream_encode_array_entries \
       < <(echo -n "${examples["${format:?}_${type:?}_in"]}" )
     printf -v output '%s' "${buff[@]}"
-    [[ $status == 0 && $output == "${examples[${type:?}_out]:?}" ]]
-  done done
+    [[ $status == 0 && $output == "${prefix?}${examples[${type:?}_out]:?}" ]]
+  done done done
 
   # out_cb names a function that's called for each encoded chunk
-  buff=()
+  buff=() prefix=''
   stdout_file=$(mktemp_bats)
   out=buff out_cb=__json.stream_encode_cb split=',' type=string \
     json.stream_encode_array_entries < <(printf 'a,b,c,d,e,f,g') > "${stdout_file:?}"
@@ -918,22 +985,38 @@ function get_object_encode_examples() {
   # Invalid type
   out=buff type=qwerty split=$'\n' format=json run json.stream_encode_object_entries \
     < <(printf '{}')
-  echo "${output:?}"
+  echo "${output?}"
   [[ $status == 1 && $output == *"json.validate: unsupported \$type: 'qwerty_object'" ]]
 }
 
+@test "json.stream_encode_object_entries :: empty file convention" {
+  local buff json_buffered_chunk_count=2 prefix status expected IFS
+  # When the input file is empty, the function emits nothing and exits with 10
+  for prefix in '' '"foo bar":{'; do
+    status=0 buff=()
+    out=buff type=number split=$'\n' format=json json.stream_encode_object_entries \
+      < <(printf '') || status=$?
+    [[ $status == 10 && ${#buff[@]} == 0 ]]
+
+    # Short files less than the chunk count are not mistaken for empty files
+    IFS=''; status=0 buff=() expected=(${prefix?} '"a":1')
+    out=buff type=number split=$'\n' format=json json.stream_encode_object_entries \
+      < <(printf '{"a":1}\n') || status=$?
+
+    [[ $status == 0 ]];
+    assert_array_equals expected buff
+
+    # A file with one empty-string chunk is an error rather than empty
+    IFS=''; status=0 buff=()
+    out=buff type=number split=$'\n' format=json json.stream_encode_object_entries \
+      < <(printf '\n') || status=$?
+
+    [[ $status == 1 ]];
+  done
+}
+
 @test "json.stream_encode_object_entries" {
-  local buff json_buffered_chunk_count=2 expected=()
-
-  # Empty input file
-  buff=() expected=()
-  out=buff type=number format=json split=$'\n' json.stream_encode_object_entries \
-    < <(printf '')
-  assert_array_equals buff expected
-
-  out='' type=number format=json split=$'\n' run json.stream_encode_object_entries \
-    < <(printf '')
-  [[ $output == '' ]]
+  local buff json_buffered_chunk_count=2 expected=() status
 
   # 4 input chunks, handling 2 chunks per callback
   buff=() expected=('"a":1,"b":2,"c":3,"d":4' ',' '"e":5,"e":6,"g":7,"h":8')
