@@ -732,10 +732,28 @@ function json._parse_argument2() {
   key_value=${key_value//==/=}
 
   case "${BASH_REMATCH[4]}" in  # key flags
-  (*'+'*)  _jpa_out['key_flag_strict']='+' ;;&
-  (*'~'*)  _jpa_out['key_flag_no']='~'     ;;&
-  (*'?'*)  _jpa_out['key_flag_empty']='?'  ;;&
-  (*'??'*) _jpa_out['key_flag_empty']='??' ;;&
+  (*'+'*) # + makes all empty/missing values errors (overriding any defaults)
+    _jpa_out['key_flag_strict']='+' \
+    _jpa_out['no_key']='error' \
+    _jpa_out['empty_key']='error' \
+    _jpa_out['empty_str_key']='error' \
+    _jpa_out['empty_file_key']='error' \
+    _jpa_out['empty_var_key']='error'  ;;&
+  (*'~'*) # ~ results in entries with missing vars/files being empty
+    _jpa_out['key_flag_no']='~' \
+    _jpa_out['no_key']='empty'         ;;&
+  (*'?'*) # ? results in entries with empty values being omitted
+    _jpa_out['key_flag_empty']='?' \
+    _jpa_out['empty_key']='' \
+    _jpa_out['empty_str_key']='omit' \
+    _jpa_out['empty_file_key']='omit' \
+    _jpa_out['empty_var_key']='omit'   ;;&
+  (*'?'*'?'*) # ?? results in entries with empty values using default values for the type
+    _jpa_out['key_flag_empty']='??' \
+    _jpa_out['empty_key']='' \
+    _jpa_out['empty_str_key']='' \
+    _jpa_out['empty_file_key']='' \
+    _jpa_out['empty_var_key']=''       ;;&
   esac
 
   case "${key_prefix?}${key_value:0:2}" in
@@ -792,10 +810,46 @@ function json._parse_argument2() {
 
   [[ $p3 =~ $_json_bash_005_p3_value ]]  # Always matches, can be 0-length
   case "${BASH_REMATCH[1]}" in
-  (*'+'*)  _jpa_out['val_flag_strict']='+' ;;&
-  (*'~'*)  _jpa_out['val_flag_no']='~'     ;;&
-  (*'?'*)  _jpa_out['val_flag_empty']='?'  ;;&
-  (*'??'*) _jpa_out['val_flag_empty']='??' ;;&
+  (*'+'*) # + makes all empty/missing values errors (overriding any defaults)
+    _jpa_out['val_flag_strict']='+' \
+    _jpa_out['no_val']='error' \
+    _jpa_out['empty']='error' \
+    _jpa_out['empty_str']='error' \
+    _jpa_out['empty_file']='error' \
+    _jpa_out['empty_var']='error' \
+    _jpa_out['empty_str_object']='error' \
+    _jpa_out['empty_file_object']='error' \
+    _jpa_out['empty_var_object']='error' \
+    _jpa_out['empty_str_array']='error' \
+    _jpa_out['empty_file_array']='error' \
+    _jpa_out['empty_var_array']='error'                                      ;;&
+  (*'~'*) # ~ results in entries with missing vars/files being empty
+    _jpa_out['val_flag_no']='~' \
+    _jpa_out['no_val']='empty'                                               ;;&
+  (*'?'*) # ? results in entries with empty values being omitted
+    _jpa_out['val_flag_empty']='?' \
+    _jpa_out['empty']='' \
+    _jpa_out['empty_str']='omit' \
+    _jpa_out['empty_file']='omit' \
+    _jpa_out['empty_var']='omit' \
+    _jpa_out['empty_str_object']='omit' \
+    _jpa_out['empty_file_object']='omit' \
+    _jpa_out['empty_var_object']='omit' \
+    _jpa_out['empty_str_array']='omit' \
+    _jpa_out['empty_file_array']='omit' \
+    _jpa_out['empty_var_array']='omit'                                       ;;&
+  (*'?'*'?'*) # ?? results in entries with empty values using default values for the type
+    _jpa_out['val_flag_empty']='??' \
+    _jpa_out['empty']='' \
+    _jpa_out['empty_str']='' \
+    _jpa_out['empty_file']='' \
+    _jpa_out['empty_var']='' \
+    _jpa_out['empty_str_object']='' \
+    _jpa_out['empty_file_object']='' \
+    _jpa_out['empty_var_object']='' \
+    _jpa_out['empty_str_array']='' \
+    _jpa_out['empty_file_array']='' \
+    _jpa_out['empty_var_array']=''                                           ;;&
   esac
 
   value=${p3: ${#BASH_REMATCH[0]} }
@@ -897,7 +951,28 @@ function json.define_defaults() {
   _json_defaults["${name:?}"]="${var_name:?}"
   declare -g -A "${var_name:?}=()"
   local -n defaults="${var_name:?}"
-  # Can't fail to parse because we escape ] as ]]
+  defaults+=(
+    [empty_file_key]='error'
+    [empty_file_array]='error'
+    [empty_file_object]='error'
+    [empty_file]='error'
+    [empty_var_key]='error'
+    [empty_var_array]='error'
+    [empty_var_object]='error'
+    [empty_var]='error'
+    [empty_array]='[]'
+    [empty_auto]='""'
+    [empty_bool]='false'
+    [empty_false]='false'
+    [empty_json]='null'
+    [empty_null]='null'
+    [empty_number]='0'
+    [empty_object]='{}'
+    [empty_raw]='error'
+    [empty_string]='""'
+    [empty_true]='true'
+  )
+  # Can't fail to parse because we escape / as //
   out="defaults" __jpa_array_default='false' json.parse_argument \
       ":/${attrs_string//'/'/'//'}/"
 
