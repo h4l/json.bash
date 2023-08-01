@@ -90,11 +90,11 @@ function json_validation_request() {
     (?<entry> (?&ws) (?&str) (?&ws) : (?&ws) (?&json) )
     (?: (?&ws) , (?&entry) )*+
   )?+ (?&ws) \}'
-  json="(?<json> ${array:?} | ${object:?} | ${atom:?} )"
+  json="(?<json> ${array:?} | ${object:?} | (?&atom) )"
 
   validation_request="
     (:? (?<bool> true | false ) (?<true> true ) (?<false> false ) (?<null> null )
-        ${ws:?} ${json:?}
+        (?<atom> ${atom:?} ) ${ws:?} ${json:?}
     ){0}
     ^ [\w]++ (?:
       (?= (
@@ -106,6 +106,7 @@ function json_validation_request() {
           | t  (?&ws) (?&true)  (?&ws)
           | f  (?&ws) (?&false) (?&ws)
           | z  (?&ws) (?&null)  (?&ws)
+          | a  (?&ws) (?&atom)  (?&ws)
           | Oj $(_object_pattern json)
           | Os $(_object_pattern str)
           | On $(_object_pattern num)
@@ -113,6 +114,7 @@ function json_validation_request() {
           | Ot $(_object_pattern true)
           | Of $(_object_pattern false)
           | Oz $(_object_pattern null)
+          | Oa $(_object_pattern atom)
           | Aj $(_array_pattern json)
           | As $(_array_pattern str)
           | An $(_array_pattern num)
@@ -120,6 +122,7 @@ function json_validation_request() {
           | At $(_array_pattern true)
           | Af $(_array_pattern false)
           | Az $(_array_pattern null)
+          | Aa $(_array_pattern atom)
         ) ) $
       )
       ) :++

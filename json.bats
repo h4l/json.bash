@@ -2353,6 +2353,11 @@ function expect_json_invalid() {
 
   type=null expect_json_valid null
   type=null expect_json_invalid '{}' '[]' '"foo"' 42 true false
+
+  type=atom expect_json_valid '"foo"' '""' 0 1 42 -0.12e+6 true false null
+  type=auto expect_json_valid '"foo"' '""' 0 1 42 -0.12e+6 true false null
+  type=atom expect_json_invalid '{}' '[]'
+  type=auto expect_json_invalid '{}' '[]'
 }
 
 function assert_array_equals() {
