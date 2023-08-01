@@ -197,9 +197,10 @@ start-of-key     = ( start-of-value | not-splat-flag-or-start-char )
 start-of-value   = ( start-of-ref | start-of-str )
 
 collection-marker = array-marker | object-marker
-array-marker      = "[" [ split-char ] "]"
-object-marker     = "{" [ split-char ] [ entry-format ] "}"
-entry-format      = ":" ( "json" | "attr" )
+array-marker      = "[" [ split-char ] [ array-entry-format ] "]"
+object-marker     = "{" [ split-char ] [ object-entry-format ] "}"
+array-entry-format      = ":" ( "json" | "raw" )
+object-entry-format      = ":" ( "json" | "attr" )
 split-char        = /./
 
 attribute-values  = "/" [ attr *( "," attr ) ] "/"

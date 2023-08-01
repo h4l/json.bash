@@ -750,40 +750,53 @@ function _increment_cb_count() { let ++cb_count; }
 
 function get_array_encode_examples() {
   example_names=(string number bool true false null auto raw json)
+  format_names=(json raw)
   examples+=(
-    [string_in]=$'a b\nc d\n \n'        [string_out]=$'"a b","c d"," "'
-    [number_in]=$'1\n2\n3\n'            [number_out]=$'1,2,3'
-    [bool_in]=$'true\nfalse\nfalse\n'   [bool_out]=$'true,false,false'
-    [true_in]=$'true\ntrue\ntrue\n'     [true_out]=$'true,true,true'
-    [false_in]=$'false\nfalse\nfalse\n' [false_out]=$'false,false,false'
-    [null_in]=$'null\nnull\nnull\n'     [null_out]=$'null,null,null'
-    [auto_in]=$'hi\n42\ntrue\nnull\n'   [auto_out]=$'"hi",42,true,null'
-    [raw_in]=$'{"msg":"hi"}\n42\n[]\n'  [raw_out]=$'{"msg":"hi"},42,[]'
-    [json_in]=$'{"msg":"hi"}\n42\n[]\n' [json_out]=$'{"msg":"hi"},42,[]'
+    [raw_string_in]=$'a b\nc d\n \n'    [json_string_in]=$'["a b","c d"]\n[]\n [" "] \n'
+    [string_out]=$'"a b","c d"," "'
+    [raw_number_in]=$'1\n2\n3\n'        [json_number_in]=$'[1,2]\n[]\n[3]\n'
+    [number_out]=$'1,2,3'
+    [raw_bool_in]=$'true\nfalse\nfalse\n'   [json_bool_in]=$'[true,false]\n[]\n[false]\n'
+    [bool_out]=$'true,false,false'
+    [raw_true_in]=$'true\ntrue\ntrue\n'     [json_true_in]=$'[true,true]\n[]\n[true]\n'
+    [true_out]=$'true,true,true'
+    [raw_false_in]=$'false\nfalse\nfalse\n' [json_false_in]=$'[false,false]\n[]\n[false]\n'
+    [false_out]=$'false,false,false'
+    [raw_null_in]=$'null\nnull\nnull\n'     [json_null_in]=$'[null,null]\n[]\n[null]\n'
+    [null_out]=$'null,null,null'
+    [raw_auto_in]=$'hi\n42\ntrue\nnull\n'   [json_auto_in]=$'["hi",42]\n[]\n[true,null]\n'
+    [auto_out]=$'"hi",42,true,null'
+    [raw_raw_in]=$'{"msg":"hi"}\n42\n[]\n'  [json_raw_in]=$'[{"msg":"hi"},42]\n[]\n[[]]\n'
+    [raw_out]=$'{"msg":"hi"},42,[]'
+    [raw_json_in]=$'{"msg":"hi"}\n42\n[]\n' [json_json_in]=$'[{"msg":"hi"},42]\n[]\n[[]]\n'
+    [json_out]=$'{"msg":"hi"},42,[]'
   )
 }
 
 @test "json.encode_from_file :: array" {
-  local json_buffered_chunk_count=2 cb_count
+  local json_buffered_chunk_count=2 cb_count type array_format
   local tmp=$(mktemp_bats)
-  local example_names; local -A examples; get_array_encode_examples
+  local example_names format_names; local -A examples; get_array_encode_examples
 
   for type in "${example_names[@]:?}"; do
+  for format in "${format_names[@]:?}"; do
     # output to stdout
     cb_count=0
-    collection=array split=$'\n' out_cb=_increment_cb_count json.encode_from_file \
-      < <(echo -n "${examples["${type:?}_in"]}" ) > "${tmp:?}"
+    collection=array split=$'\n' out_cb=_increment_cb_count array_format=${format:?} \
+      json.encode_from_file \
+      < <(echo -n "${examples["${format:?}_${type:?}_in"]}" ) > "${tmp:?}"
     diff <(echo -n "[${examples[${type:?}_out]:?}]") "${tmp:?}"
     [[ $cb_count == 2 ]]
 
     # output to array
     buff=() cb_count=0
     out=buff collection=array split=$'\n' out_cb=_increment_cb_count \
-      json.encode_from_file < <(echo -n "${examples["${type:?}_in"]}" )
+      array_format=${format:?} json.encode_from_file \
+      < <(echo -n "${examples["${format:?}_${type:?}_in"]}" )
     printf -v actual '%s' "${buff[@]}"
     [[ "${actual:?}" == "[${examples[${type:?}_out]:?}]" ]]
     [[ $cb_count == 2 ]]
-  done
+  done done
 }
 
 function get_object_encode_examples() {
@@ -801,7 +814,7 @@ function get_object_encode_examples() {
 }
 
 @test "json.encode_from_file :: object" {
-  local json_buffered_chunk_count=2 cb_count
+  local json_buffered_chunk_count=2 cb_count type format
   local tmp=$(mktemp_bats)  # can't use run because we need to see callbacks
   local example_names format_names; local -A examples; get_object_encode_examples
 
@@ -809,7 +822,8 @@ function get_object_encode_examples() {
   for format in "${format_names[@]:?}"; do
     # output to stdout
     cb_count=0
-    collection=object split=$'\n' out_cb=_increment_cb_count json.encode_from_file \
+    collection=object split=$'\n' out_cb=_increment_cb_count \
+      object_format=${format:?} json.encode_from_file \
       < <(echo -n "${examples["${format:?}_${type:?}_in"]}" ) > "${tmp:?}" 2>&1
     diff <(echo -n "{${examples[${type:?}_out]:?}}") "${tmp:?}"
     [[ $cb_count == 2 ]]
@@ -817,7 +831,8 @@ function get_object_encode_examples() {
     # output to array
     buff=() cb_count=0
     out=buff collection=object split=$'\n' out_cb=_increment_cb_count \
-      json.encode_from_file < <(echo -n "${examples["${format:?}_${type:?}_in"]}" )
+      object_format=${format:?} json.encode_from_file \
+      < <(echo -n "${examples["${format:?}_${type:?}_in"]}" )
     diff <(printf '%s' "${buff[@]}") <(echo -n "{${examples[${type:?}_out]:?}}")
     [[ $cb_count == 2 ]]
   done done
@@ -826,7 +841,7 @@ function get_object_encode_examples() {
 @test "json.stream_encode_array_entries :: stops reading file on error" {
   local json_buffered_chunk_count=2
   # We stop reading the stream if an element is invalid
-  split=$'\n' type=number run json.stream_encode_array_entries \
+  split=$'\n' type=number format=raw run json.stream_encode_array_entries \
     < <(seq 3; timeout 3 yes ) # stream a series of non-int values forever
 
   [[ $status == 1 && $output == \
@@ -834,6 +849,7 @@ function get_object_encode_examples() {
 }
 
 @test "json.stream_encode_array_entries :: json_buffered_chunk_count=1 callback" {
+  local format=raw
   # json_buffered_chunk_count=1 results in readarray invoking the chunks
   # available callback with an empty array, which is a bit of an edge case.
   json_buffered_chunk_count=1 split=$'\n' type=string \
@@ -849,8 +865,9 @@ function get_object_encode_examples() {
 
 @test "json.stream_encode_array_entries" {
   local buff json_buffered_chunk_count=2
-  local example_names; local -A examples; get_array_encode_examples
+  local example_names format_names; local -A examples; get_array_encode_examples
   for type in "${example_names[@]:?}"; do
+  for format in "${format_names[@]:?}"; do
     # Empty file
     split=$'\n' type=${type:?} run json.stream_encode_array_entries < <(echo -n '' )
     [[ $status == 0 && $output == "" ]]
@@ -862,15 +879,15 @@ function get_object_encode_examples() {
 
     # Non-empty file
     split=$'\n' type=${type:?} run json.stream_encode_array_entries \
-      < <(echo -n "${examples["${type:?}_in"]}" )
+      < <(echo -n "${examples["${format:?}_${type:?}_in"]}" )
     [[ $status == 0 && $output == "${examples[${type:?}_out]:?}" ]]
 
     buff=() output=''
     out=buff split=$'\n' type=${type:?} json.stream_encode_array_entries \
-      < <(echo -n "${examples["${type:?}_in"]}" )
+      < <(echo -n "${examples["${format:?}_${type:?}_in"]}" )
     printf -v output '%s' "${buff[@]}"
     [[ $status == 0 && $output == "${examples[${type:?}_out]:?}" ]]
-  done
+  done done
 
   # out_cb names a function that's called for each encoded chunk
   buff=()
@@ -891,12 +908,12 @@ function get_object_encode_examples() {
   # No format
   out=buff type=number split=$'\n' run json.stream_encode_object_entries \
     < <(printf '')
-  [[ $status == 1 && $output == "json.stream_encode_object_entries: requested format does not exist — ''" ]]
+  [[ $status == 1 && $output == *"format: parameter null or not set" ]]
 
   # Invalid format
   out=buff type=number split=$'\n' format=qwerty run json.stream_encode_object_entries \
     < <(printf '')
-  [[ $status == 1 && $output == "json.stream_encode_object_entries: requested format does not exist — 'qwerty'" ]]
+  [[ $status == 1 && $output == "json.get_entry_encode_fn(): no entry encode function exists for 'object' 'qwerty' 'number'" ]]
 
   # Invalid type
   out=buff type=qwerty split=$'\n' format=json run json.stream_encode_object_entries \
@@ -1344,6 +1361,19 @@ collection = 'array'
 collection = 'array'
 split = ','
 "
+  assert_arg_parse2 :[:] <<<"
+collection = 'array'
+split = ':'
+"
+  assert_arg_parse2 :[,:raw] <<<"
+array_format = 'raw'
+collection = 'array'
+split = ','
+"
+  assert_arg_parse2 :[:json] <<<"
+array_format = 'json'
+collection = 'array'
+"
   assert_arg_parse2 :{} <<<"
 collection = 'object'
 "
@@ -1360,12 +1390,12 @@ split = ':'
   # object arguments can specify an input chunk format
   assert_arg_parse2 :{::json} <<<"
 collection = 'object'
-format = 'json'
+object_format = 'json'
 split = ':'
 "
   assert_arg_parse2 :{:attrs} <<<"
 collection = 'object'
-format = 'attrs'
+object_format = 'attrs'
 "
   assert_arg_parse2 :// <<<""
   assert_arg_parse2 :/a=b,,c,d===e==f,==g=//h/ <<<"
@@ -1407,11 +1437,11 @@ val = './file'
 @val = 'file'
 a = 'b'
 collection = 'object'
-format = 'json'
 key = 'tobe?'
 key_flag_empty = '??'
 key_flag_no = '~'
 key_flag_strict = '+'
+object_format = 'json'
 splat = 'true'
 split = ','
 type = 'string'

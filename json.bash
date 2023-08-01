@@ -36,10 +36,6 @@ declare -gA _json_bash_validation_types=(
   ['json_object']='Oj' ['string_object']='Os' ['number_object']='On' ['bool_object']='Ob' ['true_object']='Ot' ['false_object']='Of' ['null_object']='Oz' ['atom_object']='Oa' ['auto_object']='Oa'
   ['json_array']='Aj' ['string_array']='As' ['number_array']='An' ['bool_array']='Ab' ['true_array']='At' ['false_array']='Af' ['null_array']='Az' ['atom_array']='Aa' ['auto_array']='Aa'
 )
-declare -gA _json_bash_entry_formats=(
-  ['json']='json.encode_object_entries_from_json'
-  ['attrs']='json.encode_object_entries_from_attrs'
-)
 declare -gA _json_bash_escapes=(
                      [$'\x01']='\u0001' [$'\x02']='\u0002' [$'\x03']='\u0003'
   [$'\x04']='\u0004' [$'\x05']='\u0005' [$'\x06']='\u0006' [$'\x07']='\u0007'
@@ -368,6 +364,19 @@ function json.encode_array_entries_from_json() {
   fi
 }
 
+function json.get_entry_encode_fn() {
+  local -n _jgeef_out=${out:?}
+  case "${collection:?}_${format:?}_${type:?}" in
+  (array_json_*) _jgeef_out=json.encode_array_entries_from_json               ;;
+  (array_raw_*) _jgeef_out="json.encode_${type:?}"                            ;;
+  (object_json_*) _jgeef_out=json.encode_object_entries_from_json             ;;
+  (object_attrs_*) _jgeef_out=json.encode_object_entries_from_attrs           ;;
+  (*)
+    echo "json.get_entry_encode_fn(""): no entry encode function exists for" \
+      "${collection@Q} ${format@Q} ${type@Q}" >&2; return 1                   ;;
+  esac
+}
+
 function json.start_json_validator() {
   if [[ ${_json_validator_pids[$$]:-} != "" ]]; then return 0; fi
 
@@ -499,16 +508,16 @@ function json.encode_from_file() {
   # grep (which evaluates the validation regex) buffers the entire input in
   # memory while matching, despite not needing to backtrack or output the match.
   (@(string|number|bool|true|false|null|auto|raw|json)_array_entries)
-    json.stream_encode_array_entries || return $?                             ;;
+    format=${array_format:?} json.stream_encode_array_entries || return $?                             ;;
   (@(string|number|bool|true|false|null|auto|raw|json)_object_entries)
-    json.stream_encode_object_entries || return $?                            ;;
+    format=${object_format:?} json.stream_encode_object_entries || return $?                            ;;
   (@(string|number|bool|true|false|null|auto|raw|json)_array_*)
     json.buffer_output '['
-    json.stream_encode_array_entries || return $?
+    format=${array_format:?} json.stream_encode_array_entries || return $?
     json.buffer_output ']'                                                    ;;
   (@(string|number|bool|true|false|null|auto|raw|json)_object_*)
     json.buffer_output '{'
-    json.stream_encode_object_entries || return $?
+    format=${object_format:?} json.stream_encode_object_entries || return $?
     json.buffer_output '}'                                                    ;;
   (@(string|raw)_*)
     "json.stream_encode_${type:?}" || return $?                               ;;
@@ -577,7 +586,9 @@ function json._jevff_close_stdin() { exec 0<&-; }
 # their $out buffer via the $out_cb callback.)
 function json.stream_encode_array_entries() {
   local _jsea_raw_chunks=() _jsea_encoded_chunks=() _jsea_caller_out=${out:-} \
-    _jsea_last_emit=4294967295 _jsea_separator=() _jsea_error=
+    _jsea_last_emit=4294967295 _jsea_separator=() _jsea_error='' _jseae_encode_entries_fn
+  out=_jseae_encode_entries_fn collection=array format=${format:?} type=${type:?} \
+    json.get_entry_encode_fn || return 1
   readarray -t -d "${split?}" -C json.__jsea_on_chunks_available \
     -c "${json_buffered_chunk_count:-1024}" _jsea_raw_chunks
   if [[ $_jsea_error ]]; then return 1; fi
@@ -599,7 +610,7 @@ function json.__jsea_on_chunks_available() {
   _jsea_raw_chunks["${1:?}"]=$2 _jsea_last_emit=$1
   out=$_jsea_caller_out in=_jsea_separator json.buffer_output
   if ! out=$_jsea_caller_out in=_jsea_raw_chunks join=, \
-         "json.encode_${type:?}"; then
+         "${_jseae_encode_entries_fn:?}"; then
     # readarray ignores our exit status, but we can force it to stop by closing
     # stdin, which it's reading.
     exec 0<&-  # close stdin
@@ -613,12 +624,11 @@ function json.__jsea_on_chunks_available() {
 
 function json.stream_encode_object_entries() {
   local format=${format:-}
-  [[ ${_json_bash_entry_formats["${format:-_}"]:-} ]] \
-    || { echo "json.stream_encode_object_entries: requested format does not exist — ${format@Q}" >&2; return 1; }
   local _jseoe_raw_chunks=() _jseoe_encoded_chunks=() _jseoe_caller_out=${out:-} \
     _jseoe_last_emit=4294967295 _jseoe_buff=() _jseoe_error='' \
-    _jseoe_encode_entries_fn=${_json_bash_entry_formats["${format:-_}"]:?"\
-json.stream_encode_object_entries: requested format does not exist — ${format@Q}"}
+    _jseoe_encode_entries_fn=
+  out=_jseoe_encode_entries_fn collection=object format=${format:?} \
+       type=${type:?} json.get_entry_encode_fn || return 1
 
   readarray -t -d "${split?}" -C json._jseoe_encode_chunks \
     -c "${json_buffered_chunk_count:-1024}" _jseoe_raw_chunks
@@ -729,19 +739,19 @@ function json._parse_argument2() {
 
     case "${BASH_REMATCH[2]}" in  # collection marker
     ('')                                                       ;;
-    ('['*:?*']')
-      echo "json.parse_argument: array arguments cannot have a :format" >&2;
-      return 1                                                 ;;
     ('['?']'|'['?:*']') _jpa_out['split']=${BASH_REMATCH[3]:?} ;;&
-    ('['*']') _jpa_out['collection']='array'                   ;;
+    ('['*']') _jpa_out['collection']='array'                   ;;&
+    ('['*':raw]') _jpa_out['array_format']=raw                 ;;
+    ('['*':json]') _jpa_out['array_format']=json               ;;
+
     ('{'?'}'|'{'?:*'}') _jpa_out['split']=${BASH_REMATCH[3]:?} ;;&
     ('{'*'}') _jpa_out['collection']='object'                  ;;&
-    ('{'*':attr'?('s')'}') _jpa_out['format']=attrs            ;;
-    ('{'*':json}') _jpa_out['format']=json                     ;;
-    ('{'*:?*'}')
-      echo "json.parse_argument: unsupported object argument :format — ${BASH_REMATCH[4]@Q}" >&2;
+    ('{'*':attr'?('s')'}') _jpa_out['object_format']=attrs     ;;
+    ('{'*':json}') _jpa_out['object_format']=json              ;;
+    (['{[']*:?*[']}'])
+      echo "json.parse_argument: unsupported collection :format — ${BASH_REMATCH[4]@Q}" >&2;
       return 1                                                 ;;
-    ('{'*'}')                                                  ;;
+    ('{'*'}'|'['*']')                                          ;;
     (*)
       echo "json.parse_argument: collection marker is not structured correctly — ${BASH_REMATCH[2]@Q}" >&2;
       return 1                                                 ;;
@@ -893,8 +903,8 @@ json.define_defaults __empty__ ''
 function json() {
   # vars referenced by arguments cannot start with _, so we prefix our own vars
   # with _ to prevent args referencing locals.
-  local IFS _collection _dashdash_seen _encode_fn _format _key _key_array \
-        _type _value _value_array _match _splat _split
+  local IFS _collection _dashdash_seen _encode_fn _array_format _object_format \
+        _key _key_array _type _value _value_array _match _splat _split
 
   local _caller_out=${out:-}
   if [[ ${json_stream:-} != true ]]
@@ -928,6 +938,7 @@ function json() {
 
     _type=${_attrs[type]:-${_defaults[type]:-string}}
     _splat=${_attrs['splat']:-${_defaults['splat']:-}}
+    _array_format=${_attrs['array_format']:-${_defaults['array_format']:-${_array_format:-raw}}}
     if [[ $_splat == true ]] # splat always implies the arg is a collection
     then _collection=${_json_return?}
     else _splat='' _collection=${_attrs['collection']:-${_defaults['collection']:-false}}; fi
@@ -985,7 +996,7 @@ function json() {
     case "${_attrs[@val]}" in
     (var)
       local -n _value="${_attrs[val]}"
-      _format=json
+      _object_format=json
       if [[ ${_value+isset} ]]; then
         if [[ ${_value@a} == *[aA]* ]]; then local -n _value_array=_value; fi
       else
@@ -1006,8 +1017,8 @@ function json() {
           fi
         fi
       fi ;;
-    (file) _value_file=${_attrs[val]} _format=json ;;
-    (str) _value=${_attrs[val]} _format=attrs ;;
+    (file) _value_file=${_attrs[val]} _object_format=json ;;
+    (str) _value=${_attrs[val]} _object_format=attrs ;;
     esac
 
     if [[ ${_first:?} == true ]]; then _first=false
@@ -1034,9 +1045,10 @@ function json() {
       if [[ ${_attrs[split]+isset} ]]; then _split=${_attrs[split]}
       elif [[ ${_collection} == @(array|object) ]]; then _split=$'\n';
       else _split=''; fi
-      _format=${_attrs['format']:-${_defaults['format']:-${_format:?}}}
+      _object_format=${_attrs['object_format']:-${_defaults['object_format']:-${_object_format:?}}}
 
-      if ! { { collection=${_collection:?} format=${_format:?} type=${_type:?} \
+      if ! { { collection=${_collection:?} object_format=${_object_format:?} \
+              array_format=${_array_format:?} type=${_type:?} \
               entries=${_splat?} split=${_split?} json.encode_from_file \
               || _status=$?; } < "${_value_file:?}"; }; then
         json._error "json(): failed to read file referenced by argument:" \
@@ -1055,21 +1067,26 @@ function json() {
         fi
 
         if [[ ${_collection} == array ]]; then
+          if ! out=_encode_fn collection=array format=${_array_format:?} \
+                type=${_type:?} json.get_entry_encode_fn; then
+            json._error "json(): array entry format does not exist — ${_array_format@Q}"
+            return 2
+          fi
           if [[ $_splat == true ]]; then
-            join=, in=_value_array "$_encode_fn" || _status=$?;
+            join=, in=_value_array type=${_type:?} "$_encode_fn" || _status=$?;
           else
             json.buffer_output '['
-            join=, in=_value_array "$_encode_fn" || _status=$?;
+            join=, in=_value_array type=${_type:?} "$_encode_fn" || _status=$?;
             json.buffer_output "]"
           fi
         else
-          _format=${_attrs['format']:-${_defaults['format']:-${_format:?}}}
+          _object_format=${_attrs['object_format']:-${_defaults['object_format']:-${_object_format:?}}}
           if [[ ${_value_array@a} == *A* ]]; then  # assoc arrays are not decoded
             _encode_fn=json.encode_object_entries
           else
-            _encode_fn=${_json_bash_entry_formats["${_format:?}"]:-}
-            if [[ ! ${_encode_fn} ]]; then
-              json._error "json(): object entry format does not exist — ${_format@Q}"
+            if ! out=_encode_fn collection=object format=${_object_format:?} \
+                 type=${_type:?} json.get_entry_encode_fn; then
+              json._error "json(): object entry format does not exist — ${_object_format@Q}"
               return 2
             fi
           fi
