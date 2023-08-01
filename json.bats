@@ -478,6 +478,44 @@ function assert_encode_object_entries_from_pre_encoded_entries() {
 are not all valid JSON objects with 'string' values." ]]
 }
 
+@test "json.encode_array_entries_from_json" {
+  local arrays type
+  type=string arrays=()
+  [[ $(in=arrays  json.encode_array_entries_from_json) == '' ]]
+  type=string arrays=('[]' '[]')
+  [[ $(in=arrays json.encode_array_entries_from_json) == '' ]]
+  type=string arrays=('["a","b"]' '["c"]' '["d","e"]')
+  [[ $(in=arrays json.encode_array_entries_from_json) == '"a","b","c","d","e"' ]]
+  type=number arrays=('[12,34]' '[5.6]' '[7,8]')
+  [[ $(in=arrays json.encode_array_entries_from_json) == '12,34,5.6,7,8' ]]
+
+  # whitespace is trimmed/ignored
+  type=number arrays=($' \n\r\t[ \n\r\t12,34 \n\r\t] \n\r\t' '[5.6]' '[7,8]')
+  [[ $(in=arrays json.encode_array_entries_from_json) == '12,34,5.6,7,8' ]]
+
+  # empty arrays are collapsed
+  type=number arrays=(' [1,2] ' ' [] ' ' [] ' ' [3] ')
+  [[ $(in=arrays json.encode_array_entries_from_json) == '1,2,3' ]]
+
+  # as with encode_object_entries, raw type values are not validated
+  type=raw arrays=('12,"34"]' '[5.6' '[7,8]')
+  [[ $(in=arrays json.encode_array_entries_from_json) == '12,"34",5.6,7,8' ]]
+
+  # positional arguments can be used instead of an $in array
+  type=number
+  [[ $(json.encode_array_entries_from_json '[12,34]' '[5.6]' '[7,8]') == '12,34,5.6,7,8' ]]
+}
+
+@test "json.encode_array_entries_from_json :: errors" {
+  # entry value types are validated
+  type=number arrays=('[1, 2]' '["3"]')
+  in=arrays run json.encode_array_entries_from_json
+  echo "${output@Q}"
+  [[ $status == 1  && $output == "json.encode_array_entries_from_json(): \
+provided entries are not all valid JSON arrays with 'number' values — \
+'[1, 2]' '[\"3\"]'" ]]
+}
+
 # Verify that a json.encode_${type} function handles in & out parameters correctly
 function assert_input_encodes_to_output_under_all_calling_conventions() {
   : "${input?}" "${output:?}" "${join?}"

@@ -348,6 +348,26 @@ function json.encode_object_entries_from_attrs() {
   in=_jeoefa_keys,_jeoefa_values out=${out?} json.encode_object_entries
 }
 
+function json.encode_array_entries_from_json() {
+  if [[ $# == 0 ]]; then local -n _jeaefj_in=${in:?}; else _jeaefj_in=("$@"); fi
+  # in is an array containing complete JSON arrays
+  if [[ ${type:?} != 'raw' ]]; then
+    type="${type:?}_array" in=_jeaefj_in json.validate || \
+      { echo "json.encode_array_entries_from_json(): provided entries are not all" \
+        "valid JSON arrays with ${type@Q} values — ${_jeaefj_in[*]@Q}" >&2; return 1; }
+  fi
+  local IFS='' _jeaefj_entries
+  # Remove the [] and whitespace surrounding the arrays' entries, while
+  # appending , and immediately removing the , from empty arrays, so
+  # empty arrays become empty strings.
+  _jeaefj_entries=("${_jeaefj_in[@]/%*([$' \t\n\r'])?(']')*([$' \t\n\r'])/','}")
+  _jeaefj_entries=("${_jeaefj_entries[@]/#*([$' \t\n\r'])?('[')*([$' \t\n\r'])?(',')/}")
+  _jeaefj_entries="${_jeaefj_entries[*]}"
+  if [[ ${#_jeaefj_entries} != 0 ]]; then
+    json.buffer_output "${_jeaefj_entries:0: ${#_jeaefj_entries} - 1 }"
+  fi
+}
+
 function json.start_json_validator() {
   if [[ ${_json_validator_pids[$$]:-} != "" ]]; then return 0; fi
 
