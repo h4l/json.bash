@@ -90,8 +90,8 @@ The result of processing an argument's keys and values is one of the following.
    [Empty value](#empty-value)
 1. The input references a variable that does not exist — Handled according to
    [No value available](#no-value-available)
-1. The input references a file that is not readable — Handled according to [No
-   value available](#no-value-available
+1. The input references a file that is not readable — Handled according to
+   [No value available](#no-value-available)
 1. The input dereferences to a value that not empty but is an invalid input for
    the argument's type — Handled according to
    [Non-empty, invalid value](#non-empty-invalid-value)
@@ -143,10 +143,10 @@ The key or value has 4 properties which are used when resolving the default:
 - `{collection}`: If the value is an array or object, `array` or `object`
   respectively, otherwise the empty string.
 - `{source}`: Where the input was read from
-  - inline argument value: `arg` (Also used when a key or value is not
+  - `=inline` argument value: `str` (Also used when a key or value is not
     syntactically present in the argument.)
-  - @name variable: `var`
-  - @/file: `file`
+  - `@name` variable: `var`
+  - `@/file` reference: `file`
 
 The attribute defining the empty behaviour is resolved by finding the first
 attribute that exists, trying all the attribute names resulting from populating
@@ -191,8 +191,12 @@ Attributes defined by `json.define_defaults` (and thus the default-defaults for
 `json`) have following defaults.
 
 - `empty_file_key=error`
-- `empty_var_key=error`
+- `empty_file_array=error`
+- `empty_file_object=error`
 - `empty_file=error`
+- `empty_var_key=error`
+- `empty_var_array=error`
+- `empty_var_object=error`
 - `empty_var=error`
 - `empty_array=[]`
 - `empty_auto=""`
@@ -247,18 +251,26 @@ practice.
 
 - `key-flags`:
   - required-flag `+`:
-    `no_key=error,empty_key=error,empty_arg_key=error,empty_file_key=error,empty_var_key=error`
+    `no_key=error,empty_key=error,empty_str_key=error,empty_file_key=error,empty_var_key=error`
   - error-empty-flag `~`: `no_key=empty`
   - omit-empty-flag `?`:
-    `empty_key=,empty_arg_key=omit,empty_file_key=omit,empty_var_key=omit`
+    `empty_key=,empty_str_key=omit,empty_file_key=omit,empty_var_key=omit`
   - sub-empty-flag `??`:
-    `empty_key=,empty_arg_key=,empty_file_key=,empty_var_key=`
+    `empty_key=,empty_str_key=,empty_file_key=,empty_var_key=`
 - `value-flags`:
   - required-flag `+`:
-    `no_val=error,empty=error,empty_arg=error,empty_file=error,empty_var=error`
+    - `no_val=error,empty=error,empty_str=error,empty_file=error,empty_var=error`
+    - `empty_str_object=error,empty_file_object=error,empty_var_object=error`
+    - `empty_str_array=error,empty_file_array=error,empty_var_array=error`
   - error-empty-flag `~`: `no_val=empty`
-  - omit-empty-flag `?`: `empty=,empty_arg=omit,empty_file=omit,empty_var=omit`
-  - sub-empty-flag `??`: `empty=,empty_arg=,empty_file=,empty_var=`
+  - omit-empty-flag `?`:
+    - `empty=,empty_str=omit,empty_file=omit,empty_var=omit`
+    - `empty_str_object=omit,empty_file_object=omit,empty_var_object=omit`
+    - `empty_str_array=omit,empty_file_array=omit,empty_var_array=omit`
+  - sub-empty-flag `??`:
+    - `empty=,empty_str=,empty_file=,empty_var=`
+    - `empty_str_object=,empty_file_object=,empty_var_object=`
+    - `empty_str_array=,empty_file_array=,empty_var_array=`
 
 The effect of `sub-empty-flag` setting the empty attributes to the empty string
 is that resolution will cascade to the default empty values, defined in
@@ -322,7 +334,7 @@ $ jb ~?@prop=Example
 $ jb ~??@prop=Example
 {"":"Example"}
 
-$ jb ~@propstring/empty_key="missing"/=Example
+$ jb ~@prop:/empty_key="missing"/=Example
 {"missing":"Example"}
 
 $ value= jb ~??@prop:/empty_string="missing"/@value
