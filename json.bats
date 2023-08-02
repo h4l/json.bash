@@ -551,7 +551,7 @@ are not all valid JSON objects with 'string' values." ]]
 
   # unequal number of keys / values via arguments
   type=string run json.encode_object_entries a
-  [[ $status == 1 && $output == *'number of arguments is odd - not all keys have values' ]]
+  [[ $status == 1 && $output == *'number of arguments is odd — not all keys have values' ]]
 }
 
 @test "json.encode_array_entries_from_json" {
@@ -1971,10 +1971,10 @@ expected: $expected
   [[ $status == 2 && ${should_omit?} == true ]]
 
   omit=should_omit sub=substitute action='error' run json.apply_empty_action
-  [[ $status == 1 && $output == "json(): argument 'foo' must be non-empty but is empty" ]]
+  [[ $status == 1 && $output == "json.apply_empty_action(): The argument 'foo' must be non-empty but is empty." ]]
 
-  omit=should_omit sub=substitute action='error=unable to convince gnomes to communicate' run json.apply_empty_action
-  [[ $status == 1 && $output == "json(): argument 'foo' must be non-empty but is empty — unable to convince gnomes to communicate" ]]
+  omit=should_omit sub=substitute action='error=Unable to convince gnomes to communicate.' run json.apply_empty_action
+  [[ $status == 1 && $output == "json.apply_empty_action(): The argument 'foo' must be non-empty but is empty. Unable to convince gnomes to communicate." ]]
 
   omit=should_omit sub=substitute action=$'string=foo\nbar' json.apply_empty_action
   echo "${substitute@Q}"
@@ -1990,11 +1990,11 @@ expected: $expected
   echo "${output@Q}"
   [[ $status == 1 ]]
   [[ $output =~ "json.encode_json(): not all inputs are valid JSON: ' { \"abc\": 123'" ]]
-  [[ $output =~ "json.apply_empty_action(): the empty value from argument 'foo' should have been substituted, but the substitute value is not valid" ]]
+  [[ $output =~ "json.apply_empty_action(): The empty value from the argument 'foo' should have been substituted, but the substitute value is not valid." ]]
 
   omit=should_omit sub=substitute action='[42]' require_string=true run json.apply_empty_action
   [[ $status == 1 ]]
-  [[ $output =~ "json.apply_empty_action(): the empty value from argument 'foo' should have been substituted, but the substitute value is not a string — '[42]'" ]]
+  [[ $output =~ "json.apply_empty_action(): The empty value from the argument 'foo' should have been substituted, but the substitute value is not a string — '[42]'." ]]
 }
 
 @test "json.bash json / json.array / json.object functions" {
@@ -2410,14 +2410,13 @@ expected: $expected
 }
 
 @test "json.bash json errors :: do not produce partial JSON output" {
-  # No partial output on errors — either json suceeds with output, or fails with
+  # No partial output on errors — either json succeeds with output, or fails with
   # no output.
-  run json foo=bar error:number=notanumber
+  run --separate-stderr json foo=bar error:number=notanumber
   [[ $status == 1 ]]
   # no JSON in output:
-  [[ ! $output =~ '{' ]]
-  echo "${output@Q}"
-  [[ "$output" == *"failed to encode value as number: 'notanumber' from 'error:number=notanumber'"* ]]
+  [[ $output == $'\x18' ]]
+  [[ "$stderr" == *"json(): Could not encode the value of argument 'error:number=notanumber' as a 'number' value. Read from inline value."* ]]
 
   # Same for array output
   local buff=() err=$(mktemp_bats)
@@ -2429,7 +2428,7 @@ expected: $expected
   [[ ${status:-} == 1 ]]
   [[ ! $(cat "${err:?}") =~ '{' ]]
   [[ $(cat "${err:?}") == \
-    *"failed to encode value as number: 'notanumber' from 'error:number=notanumber'"* ]]
+    *"json(): Could not encode the value of argument 'error:number=notanumber' as a 'number' value. Read from inline value."* ]]
   declare -p buff
   [[ ${#buff[@]} == 3 && ${buff[0]} == '{"ok":true}' \
     && ${buff[1]} == $'\x18' && ${buff[2]} == '{"garbage":false}' ]]
@@ -2468,55 +2467,53 @@ expected: $expected
   # A json_defaults value that is not a name that has been defined with
   # json.define_defaults is an error.
   json_defaults=__undefined__ run json
-  [[ $status == 2 && $output =~ "json(): json.define_defaults has not been called for json_defaults value: '__undefined__'" ]]
+  [[ $status == 2 && $output =~ "json(): json.define_defaults has not been called for \$json_defaults value: '__undefined__'" ]]
 
   # Invalid typed values are errors
   run json a:number=a
-  [[ $status == 1 && $output =~ "failed to encode value as number: 'a' from 'a:number=a'" ]]
+  [[ $status == 1 && $output =~ "Could not encode the value of argument 'a:number=a' as a 'number' value." ]]
   run json a:number[]=a
-  [[ $status == 1 && $output =~ "failed to encode value as number: 'a' from 'a:number[]=a'" ]]
+  [[ $status == 1 && $output =~ "Could not encode the value of argument 'a:number[]=a' as an array with 'number' values." ]]
   run json a:bool=a
-  [[ $status == 1 && $output =~ "failed to encode value as bool: 'a' from 'a:bool=a'" ]]
+  [[ $status == 1 && $output =~ "Could not encode the value of argument 'a:bool=a' as a 'bool' value." ]]
   run json a:null=a
-  [[ $status == 1 && $output =~ "failed to encode value as null: 'a' from 'a:null=a'" ]]
+  [[ $status == 1 && $output =~ "Could not encode the value of argument 'a:null=a' as a 'null' value." ]]
 
   # Syntax errors in :json type values are errors
   run json a:json='{"foo":'
   [[ $status == 1 \
-    && $output =~ " failed to encode value as json: '{\"foo\":' from 'a:json={\"foo\":'" ]]
+    && $output =~ " Could not encode the value of argument 'a:json={\"foo\":' as a 'json' value." ]]
 
   local json_things=('true' '["invalid"')
   run json a:json[]@json_things
   [[ $status == 1 \
-    && $output =~ "failed to encode value as json: 'true' '[\"invalid\"' from 'a:json[]@json_things'" ]]
+    && $output =~ "Could not encode the value of argument 'a:json[]@json_things' as an array with 'json' values." ]]
 
   # references to missing variables are errors
   run json @__missing
   [[ $status == 3 && $output =~ \
-    "argument references unbound variable: \$__missing from '@__missing" ]]
+    "Could not process argument '@__missing'. Its value references unbound variable \$__missing." ]]
 
   missing_file=$(mktemp_bats --dry-run)
   # references to missing files are errors
   # ... when used as keys
   run json @${missing_file:?}=value
-  echo "$status"
-  echo "${output@Q}"
   [[ $status == 4 && $output =~ \
-    "json(): failed to read the file '${missing_file:?}' referenced as the key of argument '@${missing_file:?}=value'" ]]
+    "Could not open the file '${missing_file:?}' referenced as the key of argument '@${missing_file:?}=value'." ]]
 
   # ... and when used as values
   run json key@${missing_file:?}
   [[ $status == 4 && $output =~ \
-    "json(): failed to read the file '${missing_file:?}' referenced as the value of argument 'key@${missing_file:?}'" ]]
+    "Could not open the file '${missing_file:?}' referenced as the value of argument 'key@${missing_file:?}'." ]]
+    # "Could not open the file '{missing_file:?}' referenced as the value of argument 'key@{missing_file:?}'." ]]
 
   # Can't splat an object into an array
   run json.array ...:{}=a=1,b=2,c=3
-  echo "${output@Q}"
-  [[ $status == 2 && $output =~ "json(): an array is being created, cannot ... splat an object into an array — '...:{}=a=1,b=2,c=3'" ]]
+  [[ $status == 2 && $output =~ "json(): Could not process argument '...:{}=a=1,b=2,c=3'. An array is being created but this argument defines object entries. Cannot ... splat object entries into an array." ]]
+
   # Nor arrays into objects
   run json ...:[,]=a,b,c
-  echo "${output@Q}"
-  [[ $status == 2 && $output =~ "json(): an object is being created, cannot ... splat an array into an object — '...:[,]=a,b,c'" ]]
+  [[ $status == 2 && $output =~ "json(): Could not process argument '...:[,]=a,b,c'. An object is being created but this argument defines array entries. Cannot ... splat array entries into an object." ]]
 }
 
 @test "json errors are signaled in-band by writing a 0x18 Cancel control character" {
@@ -2576,7 +2573,7 @@ expected: $expected
   # e.g. see: https://pexpect.readthedocs.io/en/stable/overview.html#find-the-end-of-line-cr-lf-conventions
 
   err="json.encode_number(): not all inputs are numbers: 'oops'
-json(): failed to encode value as number: 'oops' from 'a:number=oops'
+json(): Could not encode the value of argument 'a:number=oops' as a 'number' value. Read from inline value.
 "
   diff -u <(printf "${err:?}") "${stderr:?}"
   [[ $status == 1 ]]
