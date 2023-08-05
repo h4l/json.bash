@@ -968,7 +968,7 @@ function json.define_defaults() {
     [empty_null]='null'
     [empty_number]='0'
     [empty_object]='{}'
-    [empty_raw]='error'
+    [empty_raw]='null'
     [empty_string]='""'
     [empty_true]='true'
   )

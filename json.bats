@@ -2112,10 +2112,6 @@ expected: $expected
   json_defaults=__undefined__ run json
   [[ $status == 2 && $output =~ "json(): json.define_defaults has not been called for json_defaults value: '__undefined__'" ]]
 
-  # Empty raw values are errors
-  run json a:raw=
-  [[ $status == 1 && $output =~ "raw JSON value is empty" ]]
-
   # Invalid typed values are errors
   run json a:number=a
   [[ $status == 1 && $output =~ "failed to encode value as number: 'a' from 'a:number=a'" ]]
