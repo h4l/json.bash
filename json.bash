@@ -945,7 +945,7 @@ function json.define_defaults() {
   # complications of detecting if an associative array var is set. Secondly, to
   # avoid needing to validate defaults on each json() call.
   local name=${1:?"json.define_defaults(): first argument must be the name for the defaults"} \
-    attrs_string=${2:-}
+    argument=${2:-}
   local var_name="_json_defaults_${name:?}"
 
   _json_defaults["${name:?}"]="${var_name:?}"
@@ -972,14 +972,19 @@ function json.define_defaults() {
     [empty_string]='""'
     [empty_true]='true'
   )
-  # Can't fail to parse because we escape / as //
-  out="defaults" __jpa_array_default='false' json.parse_argument \
-      ":/${attrs_string//'/'/'//'}/"
-
-  if [[ ! ${defaults[type]:-string} =~ $_json_bash_type_name_pattern ]]; then
-    local error="json.define_defaults(): defaults contain invalid 'type': ${defaults[type]@Q}"
+  if ! out="defaults" json.parse_argument "${argument?}"; then
     unset "_json_defaults[${name:?}]" "${var_name:?}"
-    out='' json.signal_error "${error:?}"; return 2
+    echo "json.define_defaults(): Could not define defaults ${name@Q} from" \
+      "argument ${argument@Q}. Argument is not structured correctly." >&2
+    return 1
+  fi
+
+  if [[ ! ${defaults['type']:-string} =~ $_json_bash_type_name_pattern ]]; then
+    echo "json.define_defaults(): Could not define defaults ${name@Q} from" \
+      "argument ${argument@Q}. Defaults contain invalid type attribute" \
+      "${defaults['type']@Q}." >&2
+    unset "_json_defaults[${name:?}]" "${var_name:?}"
+    return 1
   fi
 }
 json.define_defaults __empty__ ''
