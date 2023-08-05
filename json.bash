@@ -31,6 +31,7 @@ _json_bash_number_glob='?([-])@(0|[1-9]*([0-9]))?([.]+([0-9]))?([eE]?([+-])+([0-
 _json_bash_auto_glob="\"@(true|false|null|$_json_bash_number_glob)\""
 _json_in_err="in= must be set when no positional args are given"
 _json_bash_validation_type=$'(j|s|n|b|t|f|z|Oj|Os|On|Ob|Ot|Of|Oz|Aj|As|An|Ab|At|Af|Az)'
+exec {_json_bash_null_fd}>/dev/null
 declare -gA _json_bash_validation_types=(
   ['json']='j' ['string']='s' ['number']='n' ['bool']='b' ['true']='t' ['false']='f' ['null']='z' ['atom']='a' ['auto']='a'
   ['json_object']='Oj' ['string_object']='Os' ['number_object']='On' ['bool_object']='Ob' ['true_object']='Ot' ['false_object']='Of' ['null_object']='Oz' ['atom_object']='Oa' ['auto_object']='Oa'
@@ -1156,7 +1157,7 @@ function json.apply_empty_action() {
 function json() {
   # vars referenced by arguments cannot start with _, so we prefix our own vars
   # with _ to prevent args referencing locals.
-  local _array_format _collection _dashdash_seen _empty_key_action _empty_value_action _encode_fn _format _key _key_array _match _name _object_format _omit _omit='' _prefix _raw_key _splat _split _status _type _value _value_array IFS
+  local _array_format _collection _dashdash_seen _empty_key_action _empty_value_action _encode_fn _err_fd _format _key _key_array _match _name _no_action _object_format _omit _omit='' _prefix _raw_key _splat _split _status _type _value _value_array IFS
 
   local _caller_out=${out:-} _our_out=${out:-} _key_buff=()
   if [[ ${json_stream:-} != true ]]
@@ -1349,11 +1350,12 @@ function json() {
       if [[ ${_raw_key:-} ]]; then
         json.buffer_output "${_prefix[@]}" "${_raw_key:?}"
       elif [[ ${_key_file:-} ]]; then
-        _status=0;
+        _status=0 _no_action=${_attrs['no_key']:-${_defaults['no_key']:-}}
+        if [[ ${_no_action?} != empty ]]; then _err_fd=2; else _err_fd=${_json_bash_null_fd:?}; fi
+
         if ! { { prefix=${_prefix[0]:-} json.stream_encode_string || _status=$? ; } \
-               < "${_key_file:?}"; }; then
-          if [[ ${_attrs['no_key']:-${_defaults['no_key']:-}} != empty ]];
-          then _status=1; else _status=10; fi
+               < "${_key_file:?}"; } 2>&"${_err_fd:?}"; then
+          if [[ ${_no_action?} != empty ]]; then _status=1; else _status=10; fi
         fi
         if [[ $_status == 10 ]]; then  # 10 means 0-length file
           if ! sub=_raw_key omit=_omit require_string=true name="argument ${arg@Q} key" \
@@ -1382,18 +1384,19 @@ function json() {
       fi
     fi
     if [[ ${_value_file:-} ]]; then
-      _status=0
+      _status=0 _no_action=${_attrs['no_val']:-${_defaults['no_val']:-}}
       if [[ ${_attrs[split]+isset} ]]; then _split=${_attrs[split]}
       elif [[ ${_collection} == @(array|object) ]]; then _split=$'\n';
       else _split=''; fi
       _object_format=${_attrs['object_format']:-${_defaults['object_format']:-${_object_format:?}}}
+      if [[ ${_no_action?} != empty ]]; then _err_fd=2; else _err_fd=${_json_bash_null_fd:?}; fi
 
       if ! { { collection=${_collection:?} entries=${_splat?} \
                object_format=${_object_format:?} array_format=${_array_format:?} \
                prefix=${_prefix[0]:-} split=${_split?} type=${_type:?} \
                json.encode_from_file \
-              || _status=$?; } < "${_value_file:?}"; }; then
-        if [[ ${_attrs['no_val']:-${_defaults['no_val']:-}} != empty ]]; then
+              || _status=$?; } < "${_value_file:?}"; } 2>&"${_err_fd:?}"; then
+        if [[ ${_no_action?} != empty ]]; then
           json._error "json(): failed to read the file ${_value_file@Q}" \
             "referenced as the value of argument ${arg@Q}"; return 4
         fi
