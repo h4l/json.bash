@@ -2286,6 +2286,124 @@ expected: $expected
   json_defaults=num json.array 0 ...:[:json]@json_array 4 | equals_json '[0,1,2,3,4]'
 }
 
+@test "json.bash json :: missing/empty value flags" {
+  # By default, empty values from variables and files are errors
+  local empty='' empty_array=()
+  run json key@empty
+  [[ $status == 1 && $output =~ "The value of argument 'key@empty' must be non-empty but is empty." ]]
+  run json key:[]@empty_array
+  [[ $status == 1 && $output =~ "The value of argument 'key:[]@empty_array' must be non-empty but is empty." ]]
+  run json key:{}@empty_array
+  [[ $status == 1 && $output =~ "The value of argument 'key:{}@empty_array' must be non-empty but is empty." ]]
+
+  run json key@<(printf '')
+  [[ $status == 1 && $output =~ "The value of argument 'key@/dev/fd"/[0-9]+"' must be non-empty but is empty." ]]
+  run json key:[]@<(printf '')
+  [[ $status == 1 && $output =~ "The value of argument 'key:[]@/dev/fd"/[0-9]+"' must be non-empty but is empty." ]]
+  run json key:{}@<(printf '')
+  [[ $status == 1 && $output =~ "The value of argument 'key:{}@/dev/fd"/[0-9]+"' must be non-empty but is empty." ]]
+
+  # Empty values from inline argument values are not errors by default, because
+  # it's assumed that the user has directly opted to provide an empty value, so
+  # they know it'll be empty. (As opposed to an indirect variable/file
+  # reference.) And they can use a bash-level :? substitution to trigger an
+  # error if they are inserting a var inline that shouldn't be empty.
+  json a= b:[]= c:{}=  | equals_json '{a: "", b: [], c: {}}'
+
+  # The same applies to keys — empty keys from variables and files are errors
+  # too, but not from arguments.
+  run json @empty=foo
+  [[ $status == 1 && $output =~ "The key of argument '@empty=foo' must be non-empty but is empty." ]]
+
+  run json @<(printf '')=foo
+  [[ $status == 1 && $output =~ "The key of argument '@/dev/fd/"[0-9]+"=foo' must be non-empty but is empty." ]]
+
+  # empty inline key is not an error by default
+  json :=abc | equals_json '{"": "abc"}'
+
+  # Missing values (unset variables or non-existant files) are errors by default
+  # Missing Keys
+  run json @missing_var=
+  [[ $status == 3 && $output =~ "Could not process argument '@missing_var='. Its key references unbound variable \$missing_var." ]]
+
+  run json @/missing/file=
+  [[ $status == 4 && $output =~ "Could not open the file '/missing/file' referenced as the key of argument '@/missing/file='." ]]
+
+  # The bash error regarding the failure to open the file is emitted
+  [[ $output =~ "/missing/file: No such file or directory" ]]
+
+  # Missing Values
+  run json key@missing_var
+  [[ $status == 3 && $output =~ "Could not process argument 'key@missing_var'. Its value references unbound variable \$missing_var." ]]
+
+  run json key@/missing/file
+  [[ $status == 4 && $output =~ "Could not open the file '/missing/file' referenced as the value of argument 'key@/missing/file'." ]]
+  # The bash error regarding the failure to open the file is emitted
+  [[ $output =~ "/missing/file: No such file or directory" ]]
+
+  # The missing/empty behaviour of Keys and values of arguments can be modified
+  # using the + ~ ? flags.
+
+  # ~ causes the key or value it's used with to to be treated as if it is
+  # present but empty.
+  run json ~@missing_var=a
+  [[ $status == 1 && $output =~ "The key of argument '~@missing_var=a' must be non-empty but is empty." ]]
+  run json ~@/missing/file=a
+  [[ $status == 1 && $output =~ "The key of argument '~@/missing/file=a' must be non-empty but is empty." ]]
+  run json a~@missing_var
+  [[ $status == 1 && $output =~ "The value of argument 'a~@missing_var' must be non-empty but is empty." ]]
+  run json a~@/missing/file
+  [[ $status == 1 && $output =~ "The value of argument 'a~@/missing/file' must be non-empty but is empty." ]]
+
+  # ? causes the entry of the key or value it's used with to be omitted if it is
+  # empty. Also nothing is printed on stderr about the failure to open the file
+  # For keys:
+  run json a=1 ~?@missing_var=2 c=3 ~?@/missing/file=4 e=5
+  [[ $status == 0 && $output == '{"a":"1","c":"3","e":"5"}' ]]
+  # For values:
+  run json a=1 b~?@missing_var c=3 d~?@/missing/file e=5
+  [[ $status == 0 && $output == '{"a":"1","c":"3","e":"5"}' ]]
+
+  # ?? causes the entry of the key or value it's used with to be substituted by
+  # a default value appropriate for the :type
+  json auto:auto??= bool:bool??= false:false??= json:json??= null:null??= \
+    number:number??= raw:raw??= string:string??= true:true??= | equals_json '{
+      auto: "", bool: false, false: false, json: null, null: null, number: 0,
+      raw: null, string: "", true: true
+    }'
+
+  local empty_args expected_empty='{
+    auto: "", bool: false, false: false, json: null, null: null, number: 0,
+    raw: null, string: "", true: true
+  }'
+  empty_args=()
+  for type in auto bool false json null number raw string true; do
+    empty_args+=("${type:?}:${type:?}??=")
+  done
+  json "${empty_args[@]}" | equals_json "${expected_empty:?}"
+
+  empty_args=()
+  for type in auto bool false json null number raw string true; do
+    empty_args+=("${type:?}:${type:?}??@empty")
+  done
+  echo json "${empty_args[@]@Q}"
+  json "${empty_args[@]}" | equals_json "${expected_empty:?}"
+
+  local empty_file=$(mktemp_bats) empty_args=()
+  for type in auto bool false json null number raw string true; do
+    empty_args+=("${type:?}:${type:?}??@${empty_file:?}")
+  done
+  json "${empty_args[@]}" | equals_json "${expected_empty:?}"
+
+  # The flags are shorthands for setting the no_key, no_val and various empty*
+  # attributes. These can be set using json.define_defaults.
+  # json.define_defaults nonstrict
+  json.define_defaults omit_empty ?:?
+  json.define_defaults default_empty ??:??
+  [[ $(json_defaults=omit_empty    json :=a b c:number= d :) == '{"b":"b","d":"d"}' ]]
+  [[ $(json_defaults=default_empty json :=a b c:number= d :) == '{"":"a","b":"b","c":0,"d":"d","":""}' ]]
+}
+
 @test "json.bash json.define_defaults :: fails if type is invalid" {
   run json.define_defaults example ':/type=cheese/'
   [[ $status == 1 \
