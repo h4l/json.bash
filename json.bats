@@ -2634,7 +2634,7 @@ expected: $expected
   [[ $status == 2 && $output =~ "json(): Could not process argument '...:[,]=a,b,c'. An object is being created but this argument defines array entries. Cannot ... splat array entries into an object." ]]
 }
 
-@test "json errors are signaled in-band by writing a 0x18 Cancel control character" {
+@test "json errors are signalled in-band by writing a 0x18 Cancel control character" {
   local bad_number=abc
   local bad_number_file=$(mktemp_bats); printf def > "${bad_number_file:?}"
   declare -A examples=(
