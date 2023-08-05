@@ -80,7 +80,7 @@ function json_validation_request() {
   # possibility of an alternate rule matching, so backtracking is pointless.
   ws='(?<ws> [\x20\x09\x0A\x0D]*+ )'  # space, tab, new line, carriage return
   string='(?<str> " (?:
-    [\x20-\x21\x23-\x5B\x5D-\xFF]
+    [^\x00-\x1F"\\]
     | \\ (?: ["\\/bfnrt] | u [A-Fa-f0-9]{4} )
   )*+ " )'
   number='(?<num>  -?+ (?: 0 | [1-9][0-9]*+ ) (?: \. [0-9]*+ )?+ (?: [eE][+-]?+[0-9]++ )?+ )'

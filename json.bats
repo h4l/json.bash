@@ -2999,6 +2999,8 @@ function expect_json_invalid() {
   # no invalid examples as all valid JSON is valid for the json type!
 
   type=string expect_json_valid '"foo"' '""'
+  # Strings containing unescaped Unicode
+  type=string expect_json_valid '"foo — bar"' '"👩‍💻👨‍💻"' '"⎝≸⎞"'
   type=string expect_json_invalid '{}' '[]' 42 true false null
 
   type=number expect_json_valid 0 1 42 -0.12e+6
