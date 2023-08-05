@@ -252,6 +252,7 @@ $(printf " %s" "${_jej_in[@]@Q}")" >&2
 # functions.
 function json.encode_object_entries() {
   : ${type:?"json.encode_object(): \$type must be provided"}
+  local IFS=''; local prefix=(${prefix:-}) IFS=' '
   if (( $# > 0 )); then
     if (( $# % 2 == 1 )); then
       echo "json.encode_object_entries(): number of arguments is odd - not all keys have values" >&2
@@ -262,7 +263,7 @@ function json.encode_object_entries() {
       out=_jeo_strings join='' json.encode_string "$@"
       printf -v '_jeo_string_entries' '%s:%s,' "${_jeo_strings[@]:?}"
       _jeo_string_entries=${_jeo_string_entries:0: ${#_jeo_string_entries} - 1 }
-      json.buffer_output "${_jeo_string_entries:?}"
+      json.buffer_output "${prefix[@]}" "${_jeo_string_entries:?}"
       return 0
     fi
     local -A _jeo_entries=();
@@ -281,32 +282,15 @@ function json.encode_object_entries() {
     ;;
   (*)
     local -n _jeo_entries=${in:?}
-    if [[ ${#_jeo_entries[@]} == 0 ]]; then return;
-    elif [[ ${_jeo_entries@a} == *A* ]]; then  # entries is an associative array
-      local -a _jeo_keys=("${!_jeo_entries[@]}") _jeo_values=("${_jeo_entries[@]}")
-    else
-      # entries is a regular array containing complete JSON objects
-      if [[ ${type:?} != 'raw' ]]; then
-        type="${type:?}_object" in=_jeo_entries json.validate || \
-          { echo "json.encode_object_entries(): provided entries are not all" \
-            "valid JSON objects with ${type@Q} values." >&2; return 1; }
-      fi
-        local IFS='' _jeo_encoded_entries
-        # Remove the {} and whitespace surrounding the objects' entries, while
-        # appending , and immediately removing the , from empty objects, so
-        # empty objects become empty strings.
-        _jeo_encoded_entries=("${_jeo_entries[@]/%*([$' \t\n\r'])?('}')*([$' \t\n\r'])/','}")
-        _jeo_encoded_entries=("${_jeo_encoded_entries[@]/#*([$' \t\n\r'])?('{')*([$' \t\n\r'])?(',')/}")
-        _jeo_encoded_entries="${_jeo_encoded_entries[*]}"
-        if [[ ${#_jeo_encoded_entries} != 0 ]]; then
-          json.buffer_output "${_jeo_encoded_entries:0: ${#_jeo_encoded_entries} - 1 }"
-        fi
-        return
+    if [[ ${#_jeo_entries[@]} != 0 && ${_jeo_entries@a} != *A* ]]; then
+      echo "json.encode_object_entries(): \$in is not the name of an associative array" >&2
+      return 1
     fi
+    local -a _jeo_keys=("${!_jeo_entries[@]}") _jeo_values=("${_jeo_entries[@]}")
   ;;
   esac fi
 
-  if [[ ${#_jeo_keys[@]} == 0 ]]; then return; fi
+  if [[ ${#_jeo_keys[@]} == 0 ]]; then return 10; fi
 
   local _jeo_encoded_keys _jeo_encoded_values
   in=_jeo_keys join='' out=_jeo_encoded_keys json.encode_string  # can't fail
@@ -323,29 +307,64 @@ function json.encode_object_entries() {
   _jeo_template=${_jeo_template/%,/}  # remove the trailing comma
   local -a _jeo_obj=()
   printf -v '_jeo_obj[1]' "${_jeo_template?}" "${_jeo_encoded_values[@]}"
+  in=prefix json.buffer_output
   in='_jeo_obj' json.buffer_output
 }
 
+# Create a sequence of JSON object entries from pre-encoded JSON objects.
+#
+# The input is zero or more JSON objects, whose entries are concatenated into a
+# single sequence of object entries. The entry values are validated to match
+# $type using json.validate, unless $type is raw.
 function json.encode_object_entries_from_json() {
-  in=${in:?} out=${out?} json.encode_object_entries
+  local IFS=''; local prefix=(${prefix:-}) IFS=' ' \
+    type=${type:?"json.encode_object_entries_from_json(): \$type must be provided"}
+  if [[ $# == 0 ]]; then local -n _jeoefj_in=${in:?"json.encode_object_entries_from_json(): \$in must be set if arguments are not provided"};
+  else _jeoefj_in=("$@"); fi
+  if [[ ${#_jeoefj_in[@]} == 0 ]]; then return 10; fi # 10 = no input
+
+  if [[ ${type:?} != 'raw' ]]; then
+    type="${type:?}_object" in=_jeoefj_in json.validate || \
+      { echo "json.encode_object_entries_from_json(): provided entries are not all" \
+        "valid JSON objects with ${type@Q} values." >&2; return 1; }
+  fi
+    local IFS='' _jeoefj_encoded_entries
+    # Remove the {} and whitespace surrounding the objects' entries, while
+    # appending , and immediately removing the , from empty objects, so
+    # empty objects become empty strings.
+    _jeoefj_encoded_entries=("${_jeoefj_in[@]/%*([$' \t\n\r'])?('}')*([$' \t\n\r'])/','}")
+    _jeoefj_encoded_entries=("${_jeoefj_encoded_entries[@]/#*([$' \t\n\r'])?('{')*([$' \t\n\r'])?(',')/}")
+    _jeoefj_encoded_entries="${_jeoefj_encoded_entries[*]}"
+    if [[ ${#_jeoefj_encoded_entries} != 0 ]]; then
+      json.buffer_output "${prefix[@]}" "${_jeoefj_encoded_entries:0: ${#_jeoefj_encoded_entries} - 1 }"
+    else return 11; fi # 11 = input but no output
 }
 
 function json.encode_object_entries_from_attrs() {
-  local _jeoefa_keys=() _jeoefa_values=() split=${split:-} in=${in:?}
+  local _jeoefa_keys=() _jeoefa_values=() split=${split:-} type=${type:?"\$type must be provided"}
+
+  if [[ $# == 0 ]]; then local -n _jeoefa_in=${in:?"json.encode_object_entries_from_attrs(): \$in must be set if arguments are not provided"};
+  else _jeoefa_in=("$@"); fi
+  if [[ ${#_jeoefa_in[@]} == 0 ]]; then return 10; fi # 10 = no input
+
   # $split is the char used to split file chunks, so this shouldn't occur in the
   # input, and so can be used to escape when parsing. Otherwise use RecordSeparator.
   if [[ ! ${split?} ]]; then
     split=$'\x10' # Data Link Escape — probably not used, but escape regardless
-    local -n _jeoefa_in=${in:?}
     local _jeoefa_chunks=("${_jeoefa_in[@]//$'\x10'/$'\x10\x10'}") in=_jeoefa_chunks
   fi
   in=${in:?} out=_jeoefa_keys,_jeoefa_values reserved=${split:?} \
     json.parse_attributes
-  in=_jeoefa_keys,_jeoefa_values out=${out?} json.encode_object_entries
+  if [[ ${#_jeoefa_keys[@]} == 0 ]]; then
+    return 11 # 11 = input but no output
+  fi
+  in=_jeoefa_keys,_jeoefa_values out=${out:-} json.encode_object_entries
 }
 
 function json.encode_array_entries_from_json() {
+  local IFS=''; local prefix=(${prefix:-}) IFS=' '
   if [[ $# == 0 ]]; then local -n _jeaefj_in=${in:?}; else _jeaefj_in=("$@"); fi
+  if [[ ${#_jeaefj_in[@]} == 0 ]]; then return 10; fi # 10 = no input
   # in is an array containing complete JSON arrays
   if [[ ${type:?} != 'raw' ]]; then
     type="${type:?}_array" in=_jeaefj_in json.validate || \
@@ -360,7 +379,20 @@ function json.encode_array_entries_from_json() {
   _jeaefj_entries=("${_jeaefj_entries[@]/#*([$' \t\n\r'])?('[')*([$' \t\n\r'])?(',')/}")
   _jeaefj_entries="${_jeaefj_entries[*]}"
   if [[ ${#_jeaefj_entries} != 0 ]]; then
-    json.buffer_output "${_jeaefj_entries:0: ${#_jeaefj_entries} - 1 }"
+    json.buffer_output "${prefix[@]}" "${_jeaefj_entries:0: ${#_jeaefj_entries} - 1 }"
+  else return 11; fi # 11 = input but no output
+}
+
+function json.encode_array_entries_from_values() {
+  local IFS=''; local prefix=(${prefix:-}) _jeaefv_encode="json.encode_${type:?}" IFS=' '
+  if [[ $# == 0 ]]; then
+    local -n _jeaefv_in=${in:?};
+    if [[ ${#_jeaefv_in[@]} == 0 ]]; then return 10; fi
+    in=prefix json.buffer_output
+    in=_jeaefv_in join=',' "${_jeaefv_encode:?}"
+  else
+    in=prefix json.buffer_output
+    join=',' "${_jeaefv_encode:?}" "$@"
   fi
 }
 
@@ -368,7 +400,7 @@ function json.get_entry_encode_fn() {
   local -n _jgeef_out=${out:?}
   case "${collection:?}_${format:?}_${type:?}" in
   (array_json_*) _jgeef_out=json.encode_array_entries_from_json               ;;
-  (array_raw_*) _jgeef_out="json.encode_${type:?}"                            ;;
+  (array_raw_*) _jgeef_out=json.encode_array_entries_from_values              ;;
   (object_json_*) _jgeef_out=json.encode_object_entries_from_json             ;;
   (object_attrs_*) _jgeef_out=json.encode_object_entries_from_attrs           ;;
   (*)
@@ -502,21 +534,31 @@ function json.validate() {
 function json.encode_from_file() {
   # TODO: remove backwards compat
   if [[ ${array:-} == true ]]; then collection=array; fi
-  local entries=${entries:-} prefix=${prefix:-}
+  local entries=${entries:-} prefix=${prefix:-} _jeff_status=0
   case "${type:?}_${collection:-}_${entries/true/entries}" in
   # There's not much point in implementing json.stream_encode_json() because
   # grep (which evaluates the validation regex) buffers the entire input in
   # memory while matching, despite not needing to backtrack or output the match.
   (@(string|number|bool|true|false|null|auto|raw|json)_array_entries)
-    format=${array_format:?} json.stream_encode_array_entries || return $?                             ;;
+    format=${array_format:?} json.stream_encode_array_entries || return $?    ;;
   (@(string|number|bool|true|false|null|auto|raw|json)_object_entries)
-    format=${object_format:?} json.stream_encode_object_entries || return $?                            ;;
+    format=${object_format:?} json.stream_encode_object_entries || return $?  ;;
   (@(string|number|bool|true|false|null|auto|raw|json)_array_*)
-    format=${array_format:?} prefix="${prefix?}[" json.stream_encode_array_entries || return $?
-    json.buffer_output ']'                                                    ;;
+    format=${array_format:?} prefix="${prefix?}[" \
+      json.stream_encode_array_entries || _jeff_status=$?
+    case "$_jeff_status" in
+    (0) json.buffer_output ']' ;;
+    (11) json.buffer_output "${prefix?}[]" ;;
+    (*) return "$_jeff_status" ;;
+    esac                                                                      ;;
   (@(string|number|bool|true|false|null|auto|raw|json)_object_*)
-    format=${object_format:?} prefix="${prefix?}{" json.stream_encode_object_entries || return $?
-    json.buffer_output '}'                                                    ;;
+    format=${object_format:?} prefix="${prefix?}{" \
+      json.stream_encode_object_entries || _jeff_status=$?
+    case "$_jeff_status" in
+    (0) json.buffer_output '}' ;;
+    (11) json.buffer_output "${prefix?}{}" ;;
+    (*) return "$_jeff_status" ;;
+    esac                                                                      ;;
   (@(string|raw)_*)
     "json.stream_encode_${type:?}" || return $?                               ;;
   (@(number|bool|true|false|null|auto|json)_*)
@@ -593,14 +635,14 @@ function json._jevff_close_stdin() { exec 0<&-; }
 function json.stream_encode_array_entries() {
   local IFS=''; local _jsea_raw_chunks=() _jsea_encoded_chunks=() \
     _jsea_caller_out=${out:-} _jsea_last_emit=4000000000 _jsea_error='' \
-    _jseae_encode_entries_fn _jsea_separator=(${prefix:-})  # prefix is not quoted to eliminate empty strings
-  out=_jseae_encode_entries_fn collection=array format=${format:?} type=${type:?} \
+    _jsea_has_input=false _jsea_has_output=false _jsea_encode_entries_fn \
+    _jsea_separator=(${prefix:-}) _jsea_status
+  out=_jsea_encode_entries_fn collection=array format=${format:?} type=${type:?} \
     json.get_entry_encode_fn || return 1
+
   readarray -t -d "${split?}" -C json.__jsea_on_chunks_available \
     -c "${json_buffered_chunk_count:-1024}" _jsea_raw_chunks
 
-  if [[ ${_jsea_last_emit?} == 4000000000 && ${#_jsea_raw_chunks[@]} == 0 ]];
-  then return 10; fi
   if [[ $_jsea_error ]]; then return 1; fi
 
   unset "_jsea_raw_chunks[$_jsea_last_emit]"
@@ -610,6 +652,9 @@ function json.stream_encode_array_entries() {
       "${_jsea_indexes[-1]}" "${_jsea_raw_chunks[-1]}"
     if [[ $_jsea_error ]]; then return 1; fi
   fi
+  if [[ $_jsea_has_output == true ]]; then return 0; # input & output
+  elif [[ $_jsea_has_input == true ]]; then return 11; fi # input but no output
+  return 10; # no input
 }
 
 function json.__jsea_on_chunks_available() {
@@ -618,32 +663,40 @@ function json.__jsea_on_chunks_available() {
   # which delays that element until the next set of chunks is ready). This means
   # that we must also remove the first array element to avoid emitting it twice.
   unset "_jsea_raw_chunks[$_jsea_last_emit]"
-  _jsea_raw_chunks["${1:?}"]=$2 _jsea_last_emit=$1
-  out=$_jsea_caller_out in=_jsea_separator json.buffer_output
-  if ! out=$_jsea_caller_out in=_jsea_raw_chunks join=, \
-         "${_jseae_encode_entries_fn:?}"; then
+  _jsea_raw_chunks["${1:?}"]=$2 _jsea_last_emit=$1 _jsea_status=0
+
+  out=$_jsea_caller_out in=_jsea_raw_chunks prefix=${_jsea_separator[*]} \
+         "${_jsea_encode_entries_fn:?}" || _jsea_status=$?
+
+  case ${_jsea_status?} in
+  (0)
+    # separate chunks with , after the first write
+    _jsea_has_output=true _jsea_raw_chunks=() _jsea_separator=(',')
+    # call the out_cb, if provided
+    "${out_cb:-:}"                                                            ;;
+
+  (10)                                                                        ;;
+  # we called encode fn with input, but it output nothing
+  (11) _jsea_has_input=true                                                   ;;
+  (*)
     # readarray ignores our exit status, but we can force it to stop by closing
-    # stdin, which it's reading.
+    # stdin ( file descriptor 0 ), which it's reading.
     exec 0<&-  # close stdin
-    _jsea_error=true
-    return
-  fi
-  _jsea_raw_chunks=() _jsea_separator=(',') # separate chunks with , after the first write
-  "${out_cb:-:}" # call the out_cb, if provided
+    _jsea_error=true                                                          ;;
+  esac
 }
 
 function json.stream_encode_object_entries() {
-  local IFS=''; local _jseoe_raw_chunks=() _jseoe_encoded_chunks=() \
-    _jseoe_caller_out=${out:-} _jseoe_last_emit=4000000000 _jseoe_buff=(${prefix:-}) \
-    _jseoe_error='' _jseoe_encode_entries_fn
+  local _jseoe_raw_chunks=() _jseoe_encoded_chunks=() \
+    _jseoe_caller_out=${out:-} _jseoe_last_emit=4000000000 _jseoe_separator=${prefix:-} \
+    _jseoe_error='' _jseoe_encode_entries_fn _jseoe_has_input=false \
+    _jseoe_has_output=false _jseoe_status
   out=_jseoe_encode_entries_fn collection=object format=${format:?} \
        type=${type:?} json.get_entry_encode_fn || return 1
 
   readarray -t -d "${split?}" -C json._jseoe_encode_chunks \
     -c "${json_buffered_chunk_count:-1024}" _jseoe_raw_chunks
 
-  if [[ ${_jseoe_last_emit?} == 4000000000 && ${#_jseoe_raw_chunks[@]} == 0 ]]
-  then return 10; fi
   if [[ $_jseoe_error ]]; then return 1; fi
 
   unset "_jseoe_raw_chunks[$_jseoe_last_emit]"
@@ -653,25 +706,35 @@ function json.stream_encode_object_entries() {
       "${_jseoe_indexes[-1]}" "${_jseoe_raw_chunks[-1]}"
     if [[ $_jseoe_error ]]; then return 1; fi
   fi
+  if [[ $_jseoe_has_output == true ]]; then return 0; # input & output
+  elif [[ $_jseoe_has_input == true ]]; then return 11; fi # input but no output
+  return 10; # no input
 }
 
 function json._jseoe_encode_chunks() {
   local _jseoe_encoded=()
   unset "_jseoe_raw_chunks[$_jseoe_last_emit]"
-  _jseoe_raw_chunks["${1:?}"]=$2 _jseoe_last_emit=$1
-  if ! out=_jseoe_buff in=_jseoe_raw_chunks "${_jseoe_encode_entries_fn:?}"; then
+  _jseoe_raw_chunks["${1:?}"]=$2 _jseoe_last_emit=$1 _jseoe_status=0
+
+  out=${_jseoe_caller_out} in=_jseoe_raw_chunks prefix=${_jseoe_separator?} \
+    "${_jseoe_encode_entries_fn:?}" || _jseoe_status=$?
+
+  case ${_jseoe_status} in
+  (0)
+    _jseoe_has_output=true _jseoe_raw_chunks=() \
+      _jseoe_separator=',' # separate chunks with , after the first write
+    # call the out_cb, if provided
+    "${out_cb:-:}"                                                            ;;
+  # We called encode fn with no input
+  (10)                                                                        ;;
+  # We called encode fn with input, but it output nothing
+  (11) _jseoe_has_input=true                                                  ;;
+  (*)
     # readarray ignores our exit status, but we can force it to stop by closing
     # stdin, which it's reading.
     exec 0<&-  # close stdin
-    _jseoe_error=true
-    return
-  fi
-  _jseoe_raw_chunks=()
-  if [[ ${#_jseoe_buff[@]} != 0 && ${_jseoe_buff[-1]:-} != ',' ]]; then
-    out=${_jseoe_caller_out?} in=_jseoe_buff json.buffer_output
-    "${out_cb:-:}" # call the out_cb, if provided
-    _jseoe_buff=(',') # separate chunks with , after the first write
-  fi
+    _jseoe_error=true                                                         ;;
+  esac
 }
 
 # Signal failure to output JSON data.

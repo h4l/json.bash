@@ -379,57 +379,148 @@ if actual != expected:
   (( ${tests:?} == 4 * 6 ))
 }
 
-function assert_encode_object_entries_from_pre_encoded_entries() {
-  printf -v expected_str '%s' "${expected[@]}"
-  [[ $(type=${type:?} in=${in:?} json.encode_object_entries) \
-    == "${expected_str?}" ]]
+@test "json.encode_object_entries_from_attrs" {
+  local attrs=() expected
 
-  local buff=()
-  type=${type:?} in=${in:?} out=buff json.encode_object_entries
+  for prefix in '' '"foo",'; do
+    attrs=()
+    in=attrs type=string run json.encode_object_entries_from_attrs
+    [[ $status == 10 && $output == '' ]]
+
+    attrs=('' '')
+    in=attrs type=string run json.encode_object_entries_from_attrs
+    [[ $status == 11 && $output == '' ]]
+
+    attrs=('a=1,b=2' 'c=3')
+    in=attrs type=string run json.encode_object_entries_from_attrs
+    [[ $status == 0 && $output == "${prefix?}"'"a":"1","b":"2","c":"3"' ]]
+
+    # type defines entry value type
+    attrs=('a=1,b=2' 'c=3')
+    in=attrs type=number run json.encode_object_entries_from_attrs
+    [[ $status == 0 && $output == "${prefix?}"'"a":1,"b":2,"c":3' ]]
+
+    # entries can be passed via args
+    type=string run json.encode_object_entries_from_attrs 'a=1,b=2' 'c=3'
+    [[ $status == 0 && $output == "${prefix?}"'"a":"1","b":"2","c":"3"' ]]
+  done
+
+  # optimisation: the fn can avoid escaping inputs if split is set. The
+  # assumption is that input chunks were split on $split, so the split char
+  # can't occur in in the input. If split isn't used \x10 is escaped and then
+  # used as a separator when parsing attrs.
+  attrs=($'a=1\x102,b=2' 'c=3')
+  split=$'\n' in=attrs type=string run json.encode_object_entries_from_attrs
+  [[ $status == 0 && $output == "${prefix?}"'"a":"1\u00102","b":"2","c":"3"' ]]
+}
+
+@test "json.encode_object_entries_from_attrs :: errors" {
+  run json.encode_object_entries_from_attrs
+  [[ $status == 1 && $output == *"\$type must be provided"* ]]
+
+  type=string run json.encode_object_entries_from_attrs
+  [[ $status == 1 && $output == *'$in must be set if arguments are not provided' ]]
+
+  # attribute values encode as the stated type
+  local entries=('a=foo')
+  type=number in=entries run json.encode_object_entries_from_attrs
+  [[ $status == 1 && $output == "json.encode_number(): not all inputs are numbers: 'foo'" ]]
+}
+
+function assert_encode_object_entries_from_json() {
+  local status expected_status=${status:-0} prefix=${prefix:-}
+  printf -v expected_str '%s' "${expected[@]}"
+  type=${type:?} in=${in:?} prefix=${prefix?} run json.encode_object_entries_from_json
+  [[ $expected_status == "$status" && $expected_str == "$output" ]] || {
+    echo "type=${type@Q} in=${in@Q} entries=${entries[@]@Q}" >&2
+    echo "[[ ${expected_status@Q} == ${status@Q} && ${expected_str@Q} == ${output@Q} ]]" >&2
+    return 1
+  }
+
+  local buff=() status=0
+  type=${type:?} in=${in:?} out=buff prefix=${prefix?} json.encode_object_entries_from_json || status=$?
+  [[ $expected_status == $status ]]
   assert_array_equals expected buff
 }
 
-@test "json.encode_object_entries :: from pre-encoded entries" {
+@test "json.encode_object_entries_from_json" {
   local entries=() expected
 
-  # No entries produce no outputs (specifically, no empty string output)
-  entries=() expected=()
-  type=string in=entries assert_encode_object_entries_from_pre_encoded_entries
+  for prefix in '' '"foo",'; do
+    # No entries produce no outputs (specifically, no empty string output)
+    entries=() expected=()
+    status=10 type=string in=entries assert_encode_object_entries_from_json
 
-  # Only empty objects also produce no outputs
-  entries=('{}' '{  }' $'  \t\n\r { \t\n\r } \t\n\r ') expected=()
-  type=string in=entries assert_encode_object_entries_from_pre_encoded_entries
+    # Only empty objects also produce no outputs
+    entries=('{}' '{  }' $'  \t\n\r { \t\n\r } \t\n\r ') expected=()
+    status=11 type=string in=entries assert_encode_object_entries_from_json
 
-  entries=('{"a":"x"}' '{}' '{"b":"y","c":"z"}') expected=('"a":"x","b":"y","c":"z"')
-  type=string in=entries assert_encode_object_entries_from_pre_encoded_entries
+    entries=('{"a":"x"}' '{}' '{"b":"y","c":"z"}') expected=($prefix '"a":"x","b":"y","c":"z"')
+    type=string in=entries assert_encode_object_entries_from_json
 
-  entries=('{}' '{"a":[{"x":true}]}' '{}' '{"b":42,"c":false}' '{}')
-  expected=('"a":[{"x":true}],"b":42,"c":false')
-  type=json in=entries  assert_encode_object_entries_from_pre_encoded_entries
+    entries=('{}' '{"a":[{"x":true}]}' '{}' '{"b":42,"c":false}' '{}')
+    expected=($prefix '"a":[{"x":true}],"b":42,"c":false')
+    type=json in=entries  assert_encode_object_entries_from_json
+  done
+}
+
+@test "json.encode_object_entries_from_json :: non-errors" {
+  # pre-encoded entries of type raw are not validated. But the braces surrounding
+  # entries are still removed, and empty values ignored without introducing commas
+  local entries=('"a":null}' '' '"b":1' '{"foo":"bar"')
+  type=raw in=entries json.encode_object_entries_from_json
+  [[ $(type=raw in=entries json.encode_object_entries_from_json) \
+    == '"a":null,"b":1,"foo":"bar"' ]]
+}
+
+@test "json.encode_object_entries_from_json :: errors" {
+  run json.encode_object_entries_from_json
+  [[ $status == 1 && $output == *"\$type must be provided"* ]]
+
+  type=string run json.encode_object_entries_from_json
+  [[ $status == 1 && $output == *'$in must be set if arguments are not provided' ]]
+
+  # pre-encoded entries must be of the stated type
+  local entries=('{"a":null}')
+  type=string in=entries run json.encode_object_entries_from_json
+  [[ $status == 1 && $output == "json.encode_object_entries_from_json(): provided entries \
+are not all valid JSON objects with 'string' values." ]]
 }
 
 @test "json.encode_object_entries" {
-  [[ $(type=string json.encode_object_entries 'a b' '1 2'  c d) == '"a b":"1 2","c":"d"' ]]
-  [[ $(type=number json.encode_object_entries a 1 c 2) == '"a":1,"c":2' ]]
-  [[ $(type=bool json.encode_object_entries a true c false) == '"a":true,"c":false' ]]
-  [[ $(type=true json.encode_object_entries a true c true) == '"a":true,"c":true' ]]
-  [[ $(type=false json.encode_object_entries a false c false) == '"a":false,"c":false' ]]
-  [[ $(type=null json.encode_object_entries a null c null) == '"a":null,"c":null' ]]
-  [[ $(type=json json.encode_object_entries a '{"b":42}' c [1,2]) == '"a":{"b":42},"c":[1,2]' ]]
-  [[ $(type=raw json.encode_object_entries a '{"b":42}' c [1,2]) == '"a":{"b":42},"c":[1,2]' ]]
+  for prefix in '' '"foo",'; do
+    [[ $(type=string json.encode_object_entries 'a b' '1 2'  c d) == "$prefix"'"a b":"1 2","c":"d"' ]]
+    [[ $(type=number json.encode_object_entries a 1 c 2) == "$prefix"'"a":1,"c":2' ]]
+    [[ $(type=bool json.encode_object_entries a true c false) == "$prefix"'"a":true,"c":false' ]]
+    [[ $(type=true json.encode_object_entries a true c true) == "$prefix"'"a":true,"c":true' ]]
+    [[ $(type=false json.encode_object_entries a false c false) == "$prefix"'"a":false,"c":false' ]]
+    [[ $(type=null json.encode_object_entries a null c null) == "$prefix"'"a":null,"c":null' ]]
+    [[ $(type=json json.encode_object_entries a '{"b":42}' c [1,2]) == "$prefix"'"a":{"b":42},"c":[1,2]' ]]
+    [[ $(type=raw json.encode_object_entries a '{"b":42}' c [1,2]) == "$prefix"'"a":{"b":42},"c":[1,2]' ]]
 
-  local k=(a b) v_str=('foo bar' 42) v_json=('{}' true)
-  [[ $(type=string in=k,v_str json.encode_object_entries) == '"a":"foo bar","b":"42"' ]]
-  [[ $(type=json in=k,v_json json.encode_object_entries) == '"a":{},"b":true' ]]
+    # empty inputs exit with status 10. (Status 11 is not possible because
+    # inputs always produce output)
+    local empty_k=() empty_v=()
+    type=string in=empty_k,empty_v run json.encode_object_entries
+    [[ $status == 10 && $output == '' ]]
 
-  local -A kv=([a]='foo bar' [b]='bar baz')
-  # order of associative array keys is not defined
-  { printf '{'; type=string in=kv json.encode_object_entries; printf '}'; } \
-    | compare=parsed equals_json '{a: "foo bar", b: "bar baz"}'
+    local -A empty_entries=()
+    type=string in=empty_entries run json.encode_object_entries
+    [[ $status == 10 && $output == '' ]]
 
-  local buff=()
-  out=buff type=string in=k,v_str json.encode_object_entries
-  [[ $(printf '%s' "${buff[@]}") == '"a":"foo bar","b":"42"' ]]
+    local k=(a b) v_str=('foo bar' 42) v_json=('{}' true)
+    [[ $(type=string in=k,v_str json.encode_object_entries) == "$prefix"'"a":"foo bar","b":"42"' ]]
+    [[ $(type=json in=k,v_json json.encode_object_entries) == "$prefix"'"a":{},"b":true' ]]
+
+    local -A kv=([a]='foo bar' [b]='bar baz')
+    # order of associative array keys is not defined
+    { printf '{'; type=string in=kv prefix='' json.encode_object_entries; printf '}'; } \
+      | compare=parsed equals_json '{a: "foo bar", b: "bar baz"}'
+
+    local buff=()
+    out=buff type=string in=k,v_str json.encode_object_entries
+    [[ $(printf '%s' "${buff[@]}") == "$prefix"'"a":"foo bar","b":"42"' ]]
+  done
 }
 
 @test "json.encode_object_entries :: escapes" {
@@ -439,15 +530,6 @@ function assert_encode_object_entries_from_pre_encoded_entries() {
   local buff
   buff=(); out=buff type=string json.encode_object_entries $'a\nb\x10c' $'d\te\x01f'
   [[ $(printf '%s' "${buff[@]}") == '"a\nb\u0010c":"d\te\u0001f"' ]]
-}
-
-@test "json.encode_object_entries :: non-errors" {
-  # pre-encoded entries of type raw are not validated. But the braces surrounding
-  # entries are still removed, and empty values ignored without introducing commas
-  local entries=('"a":null}' '' '"b":1' '{"foo":"bar"')
-  type=raw in=entries json.encode_object_entries
-  [[ $(type=raw in=entries json.encode_object_entries) \
-    == '"a":null,"b":1,"foo":"bar"' ]]
 }
 
 @test "json.encode_object_entries :: errors" {
@@ -470,40 +552,46 @@ function assert_encode_object_entries_from_pre_encoded_entries() {
   # unequal number of keys / values via arguments
   type=string run json.encode_object_entries a
   [[ $status == 1 && $output == *'number of arguments is odd - not all keys have values' ]]
-
-  # pre-encoded entries must be of the stated type
-  local entries=('{"a":null}')
-  type=string in=entries run json.encode_object_entries
-  [[ $status == 1 && $output == "json.encode_object_entries(): provided entries \
-are not all valid JSON objects with 'string' values." ]]
 }
 
 @test "json.encode_array_entries_from_json" {
-  local arrays type
+  local arrays type prefix
+  # encode_*_entries functions return 10 without emitting the prefix when
+  # emitting no entries
+  prefix=('"ex":')
   type=string arrays=()
-  [[ $(in=arrays  json.encode_array_entries_from_json) == '' ]]
+  # status 10 = no input and no output
+  in=arrays run json.encode_array_entries_from_json
+  [[ $status == 10 && $output == '' ]]
+
+  # status 11 = input but no output
   type=string arrays=('[]' '[]')
-  [[ $(in=arrays json.encode_array_entries_from_json) == '' ]]
+  in=arrays run json.encode_array_entries_from_json
+  [[ $status == 11 && $output == '' ]]
+
   type=string arrays=('["a","b"]' '["c"]' '["d","e"]')
-  [[ $(in=arrays json.encode_array_entries_from_json) == '"a","b","c","d","e"' ]]
+  [[ $(in=arrays json.encode_array_entries_from_json) == '"ex":"a","b","c","d","e"' ]]
   type=number arrays=('[12,34]' '[5.6]' '[7,8]')
-  [[ $(in=arrays json.encode_array_entries_from_json) == '12,34,5.6,7,8' ]]
+  [[ $(in=arrays json.encode_array_entries_from_json) == '"ex":12,34,5.6,7,8' ]]
 
   # whitespace is trimmed/ignored
   type=number arrays=($' \n\r\t[ \n\r\t12,34 \n\r\t] \n\r\t' '[5.6]' '[7,8]')
-  [[ $(in=arrays json.encode_array_entries_from_json) == '12,34,5.6,7,8' ]]
+  [[ $(in=arrays json.encode_array_entries_from_json) == '"ex":12,34,5.6,7,8' ]]
 
   # empty arrays are collapsed
   type=number arrays=(' [1,2] ' ' [] ' ' [] ' ' [3] ')
-  [[ $(in=arrays json.encode_array_entries_from_json) == '1,2,3' ]]
+  [[ $(in=arrays json.encode_array_entries_from_json) == '"ex":1,2,3' ]]
 
   # as with encode_object_entries, raw type values are not validated
   type=raw arrays=('12,"34"]' '[5.6' '[7,8]')
-  [[ $(in=arrays json.encode_array_entries_from_json) == '12,"34",5.6,7,8' ]]
+  [[ $(in=arrays json.encode_array_entries_from_json) == '"ex":12,"34",5.6,7,8' ]]
 
   # positional arguments can be used instead of an $in array
+  type=string run json.encode_array_entries_from_json '[]' '[]'
+  [[ $status == 11 && $output == '' ]]
+
   type=number
-  [[ $(json.encode_array_entries_from_json '[12,34]' '[5.6]' '[7,8]') == '12,34,5.6,7,8' ]]
+  [[ $(json.encode_array_entries_from_json '[12,34]' '[5.6]' '[7,8]') == '"ex":12,34,5.6,7,8' ]]
 }
 
 @test "json.encode_array_entries_from_json :: errors" {
@@ -514,6 +602,33 @@ are not all valid JSON objects with 'string' values." ]]
   [[ $status == 1  && $output == "json.encode_array_entries_from_json(): \
 provided entries are not all valid JSON arrays with 'number' values — \
 '[1, 2]' '[\"3\"]'" ]]
+}
+
+@test "encode_array_entries_from_values" {
+  local values type prefix
+  # encode_*_entries functions return 10 without emitting the prefix when
+  # emitting no entries
+  prefix=('"ex":')
+  type=string values=()
+  in=values run json.encode_array_entries_from_values
+  [[ $status == 10 && $output == '' ]]
+
+  type=string values=('foo bar' 'baz')
+  [[ $(in=values json.encode_array_entries_from_values) == '"ex":"foo bar","baz"' ]]
+  type=number values=('1234' '5.6')
+  [[ $(in=values json.encode_array_entries_from_values) == '"ex":1234,5.6' ]]
+
+  # positional arguments can be used instead of an $in array
+  type=number
+  json.encode_array_entries_from_values '1234' '5.6'
+  [[ $(json.encode_array_entries_from_values '1234' '5.6') == '"ex":1234,5.6' ]]
+}
+
+@test "encode_array_entries_from_values :: errors" {
+  # values are validated
+  type=number values=('frob')
+  in=values run json.encode_array_entries_from_values
+  [[ $status == 1  && $output == "json.encode_number(): not all inputs are numbers: 'frob'" ]]
 }
 
 # Verify that a json.encode_${type} function handles in & out parameters correctly
@@ -844,6 +959,35 @@ function get_object_encode_examples() {
   )
 }
 
+@test "json.encode_from_file :: object :: empty in/out convention" {
+  local type=string object_format=json array_format=json split=$'\n'
+
+  for prefix in '' '"ex",'; do
+  for collection in object array; do
+    entries=true run json.encode_from_file < <(printf '')
+    [[ $status == 10 && $output == '' ]]
+
+    entries=false run json.encode_from_file < <(printf '')
+    [[ $status == 10 && $output == '' ]]
+
+    case $collection in
+    (array)  local col_json='[]' ;;
+    (object) local col_json='{}' ;;
+    esac
+    local input="${col_json:?}\n${col_json:?}\n${col_json:?}\n"
+
+    # When emitting entries only, we exit with status 11 to report no output
+    # when non-empty input produces no entries.
+    entries=true run json.encode_from_file < <(printf "${input:?}")
+    [[ $status == 11 && $output == '' ]]
+
+    # When emitting complete collections, we still emit the collection when
+    # non-empty input produces no entries.
+    entries=false run json.encode_from_file < <(printf "${input:?}")
+    [[ $status == 0 && $output == "${prefix?}${col_json:?}" ]]
+  done done
+}
+
 @test "json.encode_from_file :: object" {
   local json_buffered_chunk_count=2 cb_count type format
   local tmp=$(mktemp_bats)  # can't use run because we need to see callbacks
@@ -898,12 +1042,18 @@ function get_object_encode_examples() {
 
 @test "json.stream_encode_array_entries :: empty file convention" {
   local buff json_buffered_chunk_count=2 prefix status expected IFS
-  # When the input file is empty, the function emits nothing and exits with 10
   for prefix in '' '"foo bar":['; do
+    # When the input file is empty, the function emits nothing and exits with 10
     status=0 buff=()
     out=buff type=number format=raw split=$'\n' json.stream_encode_array_entries \
       < <(printf '') || status=$?
     [[ $status == 10 && ${#buff[@]} == 0 ]]
+
+    # Non-empty input that produces no output is status 11
+    status=0 buff=()
+    out=buff type=number format=json split=$'\n' json.stream_encode_array_entries \
+      < <(printf '[]\n[]\n[]\n') || status=$?
+    [[ $status == 11 && ${#buff[@]} == 0 ]]
 
     # short files less than the chunk count are not mistaken for empty files
     IFS=''; status=0 buff=() expected=(${prefix?} '42')
@@ -991,12 +1141,18 @@ function get_object_encode_examples() {
 
 @test "json.stream_encode_object_entries :: empty file convention" {
   local buff json_buffered_chunk_count=2 prefix status expected IFS
-  # When the input file is empty, the function emits nothing and exits with 10
   for prefix in '' '"foo bar":{'; do
+    # When the input file is empty, the function emits nothing and exits with 10
     status=0 buff=()
     out=buff type=number split=$'\n' format=json json.stream_encode_object_entries \
       < <(printf '') || status=$?
     [[ $status == 10 && ${#buff[@]} == 0 ]]
+
+    # Non-empty input that produces no output is status 11
+    status=0 buff=()
+    out=buff type=number format=json split=$'\n' json.stream_encode_object_entries \
+      < <(printf '{}\n{}\n{}\n') || status=$?
+    [[ $status == 11 && ${#buff[@]} == 0 ]]
 
     # Short files less than the chunk count are not mistaken for empty files
     IFS=''; status=0 buff=() expected=(${prefix?} '"a":1')
