@@ -59,13 +59,12 @@ target "ci-debian" {
   name = "ci-debian-bash_${replace(bash, ".", "-")}"
 }
 
-// We don't test against alpine because we're not compatible with it currently.
-TEST_MATRIX = { bash = BASH_VERSIONS, os = ["debian"] }
+TEST_MATRIX = { bash = BASH_VERSIONS, os = ["debian", "alpine"] }
 
 target "bats" {
   matrix = TEST_MATRIX
 
-  name = "bats-bash_${replace(bash, ".", "-")}"
+  name = "bats-${os}-bash_${replace(bash, ".", "-")}"
   inherits = ["base"]
   args = {
     TEST_ENV_TAG = "${os}-bash_${bash}"
@@ -73,13 +72,13 @@ target "bats" {
   contexts = { repo = "." }
   no-cache-filter = ["run-bats"]  # always re-run tests
   target = "result-bats"
-  output = ["type=local,dest=build/${NOW}/bats-debian-bash_${bash}/"]
+  output = ["type=local,dest=build/${NOW}/bats-${os}-bash_${bash}/"]
 }
 
 target "tesh" {
   matrix = TEST_MATRIX
 
-  name = "tesh-bash_${replace(bash, ".", "-")}"
+  name = "tesh-${os}-bash_${replace(bash, ".", "-")}"
   inherits = ["base"]
   args = {
     TEST_ENV_TAG = "${os}-bash_${bash}"

@@ -44,7 +44,7 @@ COPY --from=alpine-bash-from-src /opt/bash /opt/bash
 ENV PATH="/opt/bash/bin:$PATH"
 SHELL ["bash", "-euo", "pipefail", "-c"]
 COPY --from=bats-core-git / /opt/bats/bats-core
-ENV PATH=/jb/bin:/bats/bin:$PATH
+ENV PATH=/jb/bin:/opt/bats/bats-core/bin:$PATH
 
 
 FROM ci-${TEST_OS:-unused} AS ci
