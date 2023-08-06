@@ -1127,7 +1127,8 @@ function json() {
 
     _type=${_attrs[type]:-${_defaults[type]:-string}}
     _splat=${_attrs['splat']:-${_defaults['splat']:-}}
-    _array_format=${_attrs['array_format']:-${_defaults['array_format']:-${_array_format:-raw}}}
+    _array_format=${_attrs['array_format']:-${_defaults['array_format']:-raw}}
+    _object_format=${_attrs['object_format']:-${_defaults['object_format']:-attrs}}
     if [[ $_splat == true ]]; then # splat always implies the arg is a collection
       if [[ ${_attrs['collection']:-${_json_return?}} != "${_json_return:?}" ]]; then
         json._error "json(): an ${_json_return:?} is being created, cannot ..." \
@@ -1193,7 +1194,6 @@ function json() {
     case "${_attrs[@val]}" in
     (var)
       local -n _value="${_attrs[val]}"
-      _object_format=json
       if [[ ${_value+isset} ]]; then
         if [[ ${_value@a} == *[aA]* ]]; then local -n _value_array=_value; fi
       else
@@ -1217,8 +1217,8 @@ function json() {
           fi
         fi
       fi ;;
-    (file) _value_file=${_attrs[val]} _object_format=json ;;
-    (str) _value=${_attrs[val]} _object_format=attrs ;;
+    (file) _value_file=${_attrs[val]} ;;
+    (str) _value=${_attrs[val]} ;;
     esac
 
     if [[ ${_first:?} == true ]]; then _prefix=()

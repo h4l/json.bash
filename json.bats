@@ -2021,7 +2021,7 @@ expected: $expected
   # File references merge JSON objects from each line of the file
   json.define_defaults number :number
   local json_defaults=number
-  json sizes:number{}@<(
+  json sizes:number{:json}@<(
     json xs=0 s=10
     json m=20 l=30
     json xl=40
@@ -2032,7 +2032,7 @@ expected: $expected
   out=sizes json xs=0 s=10
   out=sizes json m=20 l=30
   out=sizes json xl=40
-  json @sizes:number{} | equals_json '{sizes: {xs: 0, s: 10, m: 20, l: 30, xl: 40}}'
+  json @sizes:number{:json} | equals_json '{sizes: {xs: 0, s: 10, m: 20, l: 30, xl: 40}}'
 
   unset json_defaults
 
