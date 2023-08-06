@@ -1198,7 +1198,7 @@ function json() {
           "splat an ${_attrs['collection']:?} into an ${_json_return:?} — ${arg@Q}";
         return 2;
       fi
-      _collection=${_json_return?}
+      _collection=${_json_return?} _attrs['collection']=${_json_return?}
     else _splat='' _collection=${_attrs['collection']:-${_defaults['collection']:-false}}; fi
     # If no value is set, provide a default
     if [[ ! ${_attrs[val]+isset} ]]; then # arg has no value
@@ -1409,6 +1409,11 @@ function json() {
 
         if [[ ${_splat?} == true ]]; then _object_format=json _array_format=json _type=json;
         else _type=raw _collection=false; fi # substitute value is pre-encoded
+      elif [[ $_status == 11 ]]; then
+        # json.encode_from_file received input, but emitted no output (e.g.
+        # splat containing empty collections only — entries). Therefore we don't
+        # set _first=false.
+        continue
       elif [[ $_status != 0 ]]; then
         json._error "json(): failed to encode file contents as ${_type:?}:" \
           "${_value_file@Q} from ${arg@Q}"; return 1
@@ -1430,16 +1435,18 @@ function json() {
             return 2
           fi
           if [[ $_splat == true ]]; then
-            in=_prefix json.buffer_output
-            join=, in=_value_array type=${_type:?} "$_encode_fn" || _status=$?;
+            IFS=''; in=_value_array type=${_type:?} prefix=${_prefix[*]} \
+              "$_encode_fn" || _status=$?
+            # no entries emitted, don't set _first=false
+            if [[ $_status == @(10|11) ]]; then continue; fi
           else
             json.buffer_output "${_prefix[@]}" '['
-            join=, in=_value_array type=${_type:?} "$_encode_fn" || _status=$?;
+            join=, in=_value_array type=${_type:?} prefix='' "$_encode_fn" || _status=$?;
             json.buffer_output "]"
           fi
         else
           _object_format=${_attrs['object_format']:-${_defaults['object_format']:-${_object_format:?}}}
-          if [[ ${_value_array@a} == *A* ]]; then  # assoc arrays are not decoded
+          if [[ ${#_value_array[@]} != 0 && ${_value_array@a} == *A* ]]; then  # assoc arrays are not decoded
             _encode_fn=json.encode_object_entries
           else
             if ! out=_encode_fn collection=object format=${_object_format:?} \
@@ -1449,17 +1456,20 @@ function json() {
             fi
           fi
           if [[ $_splat == true ]]; then
-            in=_prefix json.buffer_output
             # A key and value array can be used to define entries
             if [[ -R _key_array && -R _value_array && ${_key_array@a} == *a* \
                   && ${_value_array@a} == *a* ]]; then
-              join='' in=_key_array,_value_array type=${_type} json.encode_object_entries
+              IFS=''; in=_key_array,_value_array type=${_type} \
+                prefix=${_prefix[*]} json.encode_object_entries || _status=$?;
             else
-              join='' in=_value_array type=${_type} "${_encode_fn:?}" || _status=$?;
+              IFS=''; in=_value_array type=${_type} prefix=${_prefix[*]} \
+                "${_encode_fn:?}" || _status=$?;
             fi
+            # no entries emitted, don't set _first=false
+            if [[ $_status == @(10|11) ]]; then continue; fi
           else
             json.buffer_output "${_prefix[@]}" '{'
-            join='' in=_value_array type=${_type} "${_encode_fn:?}" || _status=$?;
+            join='' in=_value_array type=${_type} prefix='' "${_encode_fn:?}" || _status=$?;
             json.buffer_output "}"
           fi
         fi

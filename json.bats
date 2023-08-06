@@ -2210,7 +2210,13 @@ expected: $expected
   json.array ...:number[,]=5,6,7,8  ...:number[]@<(seq 10 12) \
     | equals_json '[5, 6, 7, 8, 10, 11, 12]'
 
-  json l4h:json@<(jb id=u789) ...:json@<(
+  json ...@<(env -i HOME=/home/foo PATH=/foo:/bar) \
+    | equals_json '{"HOME":"/home/foo","PATH":"/foo:/bar"}'
+
+  json ...:auto/split=/@<(env --null -i A=1 MULTILINE=$'foo\nbar' B=2 ) \
+    | equals_json '{"A":1,"MULTILINE":"foo\nbar",B:2}'
+
+  json l4h:json@<(jb id=u789) ...:json{:json}@<(
     username=h4l json @username:{}=id=u123,name=Hal
     username=foo json @username:{}=id=u456,name=Foo
   ) | equals_json '{"l4h":{"id":"u789"},"h4l":{"id":"u123","name":"Hal"},"foo":{"id":"u456","name":"Foo"}}'
@@ -2222,6 +2228,62 @@ expected: $expected
       "bar=baz"
     ]
   }' | compare=parsed equals_json '{"file": "src/main/frob.sh", "labels": ["foo=bar","bar=baz"]}'
+
+  json ... | equals_json '{}'
+  json ...: | equals_json '{}'
+  json ...:= | equals_json '{}'
+  json.array ... | equals_json '[]'
+  json.array ...: | equals_json '[]'
+  json.array ...:= | equals_json '[]'
+
+  json ...:{$'\n'}=$'\n\n\n' | equals_json '{}'
+  json ...:{$'\n':attrs}=$'\n\n\n' | equals_json '{}'
+  json ...:{$'\n':json}=$'{}\n{}\n{}\n' | equals_json '{}'
+  json.array ...:[$'\n':json]=$'[]\n[]\n[]\n' | equals_json '[]'
+
+  json a ...:= c | equals_json '{a:"a",c:"c"}'
+  json.array a ...:= c | equals_json '["a","c"]'
+
+  json ... ... c ... ... | equals_json '{c:"c"}'
+  json.array ... ... c ... ... | equals_json '["c"]'
+
+  json ...@<(printf '')? ...:?@<(printf '') ...:{:json}@<(printf '{}\n{}\n{}\n') \
+    | equals_json '{}'
+  json ...:number{:json}@<(printf '{"a":1,"b":2}\n{"c":3}') | equals_json '{"a":1,"b":2,"c":3}'
+
+  json ...@<(printf '')? ...@<(printf '\n\n\n') | equals_json '{}'
+  json ...:{:attrs}?@<(printf '') ...:{:attrs}@<(printf '\n\n\n') | equals_json '{}'
+
+  json ...:number@<(printf 'a=1,b=2\nc=3') | equals_json '{"a":1,"b":2,"c":3}'
+
+  json.array ...@<(printf '')? ...:?@<(printf '') | equals_json '[]'
+  json.array ...@<(printf '')? ...:?@<(printf '') | equals_json '[]'
+
+  json.array ...:[:json]@<(printf '[]\n[]\n') | equals_json '[]'
+  json.array ...:[:json]@<(printf '["a","b"]\n["c"]\n') | equals_json '["a","b","c"]'
+
+  json.define_defaults num :number
+
+  local -A object_entries=()
+  json ...@object_entries? ...:?@object_entries | equals_json '{}'
+
+  object_entries=([foo]=1 [bar]=3)
+  json ...@object_entries | compare=parsed equals_json '{"foo":"1","bar":"3"}'
+  json_defaults=num json a=0 ...@object_entries b=10 \
+    | compare=parsed equals_json '{"a":0,"foo":1,"bar":3,"b":10}'
+
+  local json_array=('{"foo":1,"bar":3}')
+  json_defaults=num json a=0 ...:{:json}@json_array b=10 | equals_json '{"a":0,"foo":1,"bar":3,"b":10}'
+
+  local array_entries=()
+  json.array ...@array_entries? ...:?@array_entries | equals_json '[]'
+
+  array_entries=(1 2 3)
+  json.array ...@array_entries | equals_json '["1","2","3"]'
+  json_defaults=num json.array 0 ...@array_entries 4 | equals_json '[0,1,2,3,4]'
+
+  local json_array=('[1,2,3]')
+  json_defaults=num json.array 0 ...:[:json]@json_array 4 | equals_json '[0,1,2,3,4]'
 }
 
 @test "json.bash json.define_defaults :: fails if type is invalid" {
