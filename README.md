@@ -3,7 +3,7 @@
 `json.bash` is a command-line tool and bash library that creates JSON.
 
 ```console tesh-session="intro"
-$ jb name=json.bash creates=JSON dependencies[:]=Bash:Grep
+$ jb name=json.bash creates=JSON dependencies:[,]=Bash,Grep
 {"name":"json.bash","creates":"JSON","dependencies":["Bash","Grep"]}
 
 $ # Values are strings unless explicitly typed
@@ -11,7 +11,7 @@ $ jb id=42 size:number=42 surname=null data:null
 {"id":"42","size":42,"surname":"null","data":null}
 
 $ # Reference variables with @name
-$ id=42 date=2023-06-23 jb @id created@=date modified@=date
+$ id=42 date=2023-06-23 jb @id created@date modified@date
 {"id":"42","created":"2023-06-23","modified":"2023-06-23"}
 
 $ # Pull data from files
@@ -19,11 +19,11 @@ $ printf hunter2 > /tmp/password; jb @/tmp/password
 {"password":"hunter2"}
 
 $ # Pull data from shell pipelines
-$ jb sizes:number[]@=<(seq 1 4)
+$ jb sizes:number[]@<(seq 1 4)
 {"sizes":[1,2,3,4]}
 
 $ # Nest jb calls
-$ jb type=club members:json[]@=<(jb name=Bob; jb name=Alice)
+$ jb type=club members:json[]@<(jb name=Bob; jb name=Alice)
 {"type":"club","members":[{"name":"Bob"},{"name":"Alice"}]}
 
 $ # The Bash API can reference arrays and create JSON efficiently — without forking
@@ -146,7 +146,7 @@ argument defines the key.
 $ jb msg=hi
 {"msg":"hi"}
 
-$ # Keys can contain most characters (except @:[=, unless escaped)
+$ # Keys can contain most characters (except @:=, unless escaped)
 $ jb "🐚"=JSON
 {"🐚":"JSON"}
 
@@ -168,20 +168,20 @@ $ jb a=A a=B a=C
 {"a":"A","a":"B","a":"C"}
 
 $ # The reserved characters can be escaped by doubling them
-$ jb @@handle=ok a::z=ok [[sic]=ok 1+1==2=ok
-{"@handle":"ok","a:z":"ok","[sic]":"ok","1+1=2":"ok"}
+$ jb =@@handle=ok a::z=ok 1+1==2=ok
+{"@handle":"ok","a:z":"ok","1+1=2":"ok"}
 ```
 
 ### Object values
 
-The last part of each argument, after a `=` or `@=` defines the value. Values
-can contain their value directly, or reference a variable or file.
+The last part of each argument, after a `=` or `@` defines the value. Values can
+contain their value directly, or reference a variable or file.
 
 ```console tesh-session="object-values"
 $ jb message="Hello World"
 {"message":"Hello World"}
 
-$ greeting="Hi there" jb message@=greeting
+$ greeting="Hi there" jb message@greeting
 {"message":"Hi there"}
 
 $ # Variable references without a value define the key and value in one go.
@@ -196,8 +196,8 @@ $ # Inline values following a `=` have no content restrictions.
 $ jb message=@value:with=reserved-chars
 {"message":"@value:with=reserved-chars"}
 
-$ # @= values that begin with / or ./ are references to files
-$ printf hunter2 > /tmp/password; jb secret@=/tmp/password
+$ # @ values that begin with / or ./ are references to files
+$ printf hunter2 > /tmp/password; jb secret@/tmp/password
 {"secret":"hunter2"}
 
 $ # File references without a value define the key and value in one go.
@@ -221,23 +221,25 @@ $ jb-array Hi "Bob Bobson"
 $ message=Hi name="Bob Bobson" jb-array @message @name
 ["Hi","Bob Bobson"]
 
-$ printf 'Bob Bobson' > /tmp/name; jb-array Hi @/tmp/name
+$ printf 'Bob Bobson' > /tmp/name
+$ jb-array Hi @/tmp/name
 ["Hi","Bob Bobson"]
 
-$ # Array values in arguments cannot contain @:[= characters (unless escaped by
+$ # Array values in arguments cannot contain @:= characters (unless escaped by
 $ # doubling them), because they would clash with @variable and :type syntax.
-$ # However, values following a = can contain anything.
-$ jb-array ='@foo:bar=baz' ='{"not":"parsed"}' @@es::ca[[p==ed
-["@foo:bar=baz","{\"not\":\"parsed\"}","@es:ca[p=ed"]
+$ # However, values following a = can contain anything, so long as they follow a
+$ # key or type section.
+$ jb-array :='@foo:bar=baz' :='{"not":"parsed"}' =@@es::cap==ed
+["@foo:bar=baz","{\"not\":\"parsed\"}","@es:cap=ed"]
 
 $ # Values from variables have no restrictions. Arrays use the same argument
 $ # syntax as objects, so values in the key or value position work the same.
-$ s1='@foo:bar=baz' s2='{"not":"parsed"}' jb-array @s1 @=s2
+$ s1='@foo:bar=baz' s2='{"not":"parsed"}' jb-array @s1: :@s2
 ["@foo:bar=baz","{\"not\":\"parsed\"}"]
 
 $ # It's possible to set a key as well as value for array entries, but the key
 $ # is ignored.
-$ a=A b=B jb-array @a@=a @b=B c=C
+$ a=A b=B jb-array @a@a @b=B c=C
 ["A","B","C"]
 ```
 
@@ -252,7 +254,8 @@ variable-length arrays containing the same type.
 
 Values are strings unless explicitly typed.
 
-```console tesh-session="types" tesh-exitcodes="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0"
+```console tesh-session="types" tesh-exitcodes="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0"
+$ # These arguments are strings because they don't use a type
 $ jb data=42 surname=null favourite_word=true
 {"data":"42","surname":"null","favourite_word":"true"}
 
@@ -277,25 +280,25 @@ $ jb a:auto=42 b:auto=Hi c:auto=true d:auto=false e:auto=null f:auto=[] g:auto={
 {"a":42,"b":"Hi","c":true,"d":false,"e":null,"f":"[]","g":"{}"}
 
 $ # auto can be used selectively like other types
-$ data=42 jb a=42 b:auto=42 c:auto@=data
+$ data=42 jb a=42 b:auto=42 c:auto@data
 {"a":"42","b":42,"c":42}
 
 $ # In the Bash API (but not yet the jb CLI), the default type can be changed
 $ # using the json_defaults option. First you create a named defaults set:
 $ source json.bash
-$ json.define_defaults my_defaults type=number
+$ json.define_defaults num :number
 
 $ # Then use the name with json_defaults when calling json to use your defaults
-$ json_defaults=my_defaults json data=42
+$ json_defaults=num json data=42
 {"data":42}
 
 $ # In which case strings need to be explicitly typed
-$ json_defaults=my_defaults json data=42 msg=Hi
+$ json_defaults=num json data=42 msg=Hi
 json.encode_number(): not all inputs are numbers: 'Hi'
-json(): failed to encode value as number: 'Hi' from 'msg=Hi'
+json(): Could not encode the value of argument 'msg=Hi' as a 'number' value. Read from inline value.
 ␘
 
-$ json_defaults=my_defaults json data=42 msg:string=Hi
+$ json_defaults=num json data=42 msg:string=Hi
 {"data":42,"msg":"Hi"}
 ```
 
@@ -322,26 +325,31 @@ $ jb sizes:number[]=42
 {"sizes":[42]}
 
 $ # The value is split on the character inside the []
-$ jb names[:]="Alice:Bob:Dr Chris"
+$ jb names:[,]="Alice,Bob,Dr Chris"
 {"names":["Alice","Bob","Dr Chris"]}
 
-$ # The default split character is line feed (\n), so each line is an array
+$ # Using a newline \n as the split character makes each line an array
 $ # element. This integrates with line-oriented command-line tools:
-$ jb sizes:number[]="$(seq 3)"
+$ jb sizes:number[$'\n']="$(seq 3)"
 {"sizes":[1,2,3]}
+```
 
-$ # The default type is used if :type is left out
-$ jb sizes[]="$(seq 3)"
+Note that [file references](#file-references) are the best way to get the output
+of other programs into JSON.
+
+```Console
+$ # The default type is used if the type name is left out
+$ jb sizes:[,]="1,2,3"
 {"sizes":["1","2","3"]}
 
-$ # [:] is shorthand for [split=:]
-$ jb names[split=:]="Alice:Bob:Dr Chris"
+$ # [:] is shorthand for /collection=array,split=:/
+$ jb names:/collection=array,split=:/="Alice:Bob:Dr Chris"
 {"names":["Alice","Bob","Dr Chris"]}
 
 $ # To split on null bytes, use split= (empty string). When used with inline and
 $ # bash values this effectively inhibits splitting, because bash variables
 $ # can't contain null bytes.
-$ printf 'AB\nCD\x00EF\nGH\n\x00' | jb nullterm[split=]@=/dev/stdin
+$ printf 'AB\nCD\x00EF\nGH\n\x00' | jb nullterm:[]/split=/@/dev/stdin
 {"nullterm":["AB\nCD","EF\nGH\n"]}
 
 $ # When using the Bash API, @var references can be bash arrays
@@ -355,7 +363,7 @@ $ json.array @names:string[] @sizes:number[] :null[] :bool[]=true
 [["Bob Bobson","Alice Alison"],[42,55],[null],[true]]
 
 $ # And jb-array values can be arrays as well
-$ jb-array [:]="Bob Bobson:Alice Alison" :number[:]=42:55 :null[] :bool[]=true
+$ jb-array [,]="Bob Bobson,Alice Alison" :number[,]=42,55 :null[] :bool[]=true
 [["Bob Bobson","Alice Alison"],[42,55],[null],[true]]
 ```
 
@@ -377,16 +385,16 @@ $ # Like other types, :json and :raw values can be directly embedded in argument
 $ jb user:json='{"name":"Bob Bobson"}'
 {"user":{"name":"Bob Bobson"}}
 
-$ # ... or come from variable references
+$ # Or come from variable references
 $ user='{"name":"Bob Bobson"}' jb @user:json
 {"user":{"name":"Bob Bobson"}}
 
-$ # ... or files
+$ # Or files
 $ jb name="Bob Bobson" > /tmp/user; jb @/tmp/user:json
 {"user":{"name":"Bob Bobson"}}
 
 $ # Arrays of JSON work the same way as other types.
-$ jb users:json[]="$(jb name=Bob; jb name=Alice)"
+$ jb users:json[$'\n']="$(jb name=Bob; jb name=Alice)"
 {"users":[{"name":"Bob"},{"name":"Alice"}]}
 
 $ # :json and :raw values are not formatted — whitespace in them is preserved
@@ -398,7 +406,7 @@ $ jb user:json=$'{\n  "name": "Bob Bobson"\n}'
 $ # :json detects invalid JSON and fails with an error
 $ jb oops:json='{"truncated":'
 json.encode_json(): not all inputs are valid JSON: '{"truncated":'
-json(): failed to encode value as json: '{"truncated":' from 'oops:json={"truncated":'
+json(): Could not encode the value of argument 'oops:json={"truncated":' as a 'json' value. Read from inline value.
 ␘
 
 $ # However :raw performs no validation, so it must only be used with great care
@@ -409,13 +417,13 @@ $ jb broken:raw='{"truncated":'
 
 ### File references
 
-The `@...` syntax can be used to reference the content of files. If an ` @ref`
+The `@ref` syntax can be used to reference the content of files. If an ` @ref`
 starts with `/` or `./` it's taken to be a file (rather than a shell variable).
 
 ```console tesh-session="file-references"
 $ printf 'orange #3\nblue #5\n' > colours
 
-$ jb my_colours@=./colours
+$ jb my_colours@./colours
 {"my_colours":"orange #3\nblue #5\n"}
 
 $ # The final path segment is used as the key if a key isn't set.
@@ -423,26 +431,26 @@ $ jb @./colours
 {"colours":"orange #3\nblue #5\n"}
 
 $ # Array values split on newlines
-$ jb @./colours[]
+$ jb @./colours:[]
 {"colours":["orange #3","blue #5"]}
 
 $ printf 'apple:pear:grape' > fruit
 
 $ # The file can be split on a different character by naming it in the []
-$ jb @./fruit[:]
+$ jb @./fruit:[:]
 {"fruit":["apple","pear","grape"]}
 
-$ # which is shorthand for:
-$ jb @./fruit[split=:]
+$ # which is shorthand for: (two commas are needed)
+$ jb @./fruit:/collection=array,split=:/
 {"fruit":["apple","pear","grape"]}
 
 $ # Split on null by setting split to the empty string
 $ printf 'foo\nbar\n\x00bar baz\n\x00' > nullterminated
-$ jb @./nullterminated[split=]
+$ jb @./nullterminated:[]/split=/
 {"nullterminated":["foo\nbar\n","bar baz\n"]}
 
 $ # Read from stdin using the special /dev/stdin file
-$ seq 3 | jb counts:number[]@=/dev/stdin
+$ seq 3 | jb counts:number[]@/dev/stdin
 {"counts":[1,2,3]}
 ```
 
@@ -453,8 +461,8 @@ containing the output of another program.
 ```console tesh-session="file-references"
 $ # Use process substitution to nest jb calls and pull multiple shell pipelines
 $ # into one JSON output.
-$ jb counts:number[]@=<(seq 3) \
->    people:json[]@=<(jb name=Bob; jb name=Alice)
+$ jb counts:number[]@<(seq 3) \
+>    people:json[]@<(jb name=Bob; jb name=Alice)
 {"counts":[1,2,3],"people":[{"name":"Bob"},{"name":"Alice"}]}
 ```
 
@@ -462,7 +470,7 @@ $ jb counts:number[]@=<(seq 3) \
 
 ```Console tesh-session="psub-101"
 $ # What's going on when we use process substitution? The <(...) syntax.
-$ jb msg@=<(printf "Hi!")
+$ jb msg@<(printf "Hi!")
 {"msg":"Hi!"}
 
 $ # The shell replaces <(...) with a file path. That file contains the output of
@@ -478,11 +486,11 @@ $ # If we cat the substitution instead of echoing it, we read the file contents:
 $ cat <(printf "Hi!")
 Hi!
 
-$ # So when we use this with jb, it's as if we ran:  jb msg@=/dev/fd/...
+$ # So when we use this with jb, it's as if we ran:  jb msg@/dev/fd/...
 
 $ # We can see this in action by enabling tracing in Bash:
-$ set -o xtrace;  jb msg@=<(printf "Hi!");  set +o xtrace
-+ jb msg@=/dev/fd/...
+$ set -o xtrace;  jb msg@<(printf "Hi!");  set +o xtrace
++ jb msg@/dev/fd/...
 ++ printf 'Hi!'
 {"msg":"Hi!"}
 + set +o xtrace
@@ -497,8 +505,8 @@ argument, not a potentially huge string.
 
 ```console tesh-session="file-references"
 $ # Process substitution can nest multiple times
-$ jb owners:json@=<(
->   jb people:json[]@=<(jb name=Bob; jb name=Alice)
+$ jb owners:json@<(
+>   jb people:json[]@<(jb name=Bob; jb name=Alice)
 > )
 {"owners":{"people":[{"name":"Bob"},{"name":"Alice"}]}}
 
@@ -539,7 +547,7 @@ exactly `true` / `false` / `null`.
 ```console tesh-session="error-handling-start" tesh-exitcodes="1"
 $ active=tRuE jb @active:bool
 json.encode_bool(): not all inputs are bools: 'tRuE'
-json(): failed to encode value as bool: 'tRuE' from '@active:bool'
+json(): Could not encode the value of argument '@active:bool' as a 'bool' value. Read from variable $active.
 ␘
 ```
 
@@ -549,27 +557,27 @@ Errors are reported with specific exit statuses:
 $ # Errors in user-provided data fail with status 1
 $ jb data:json='invalid'; echo status=$?
 json.encode_json(): not all inputs are valid JSON: 'invalid'
-json(): failed to encode value as json: 'invalid' from 'data:json=invalid'
+json(): Could not encode the value of argument 'data:json=invalid' as a 'json' value. Read from inline value.
 ␘
 status=1
 
 $ # Errors in developer-provided arguments fail with status 1
 $ jb bad_arg:cheese; echo status=$?
-json(): invalid argument: 'bad_arg:cheese'
-json(): argument is not structured correctly: 'bad_arg:cheese'
+json.parse_argument(): type name must be one of auto, bool, false, json, null, number, raw, string or true, but was 'cheese'
+json(): Could not parse argument 'bad_arg:cheese'. Argument is not structured correctly, see --help for examples.
 ␘
 status=2
 
 $ # Arguments referencing variables that don't exist fail with status 3
 $ jb @missing; echo status=$?
-json(): argument references unbound variable: $missing from '@missing'
+json(): Could not process argument '@missing'. Its value references unbound variable $missing. (Use the '~' flag after the :type to treat a missing value as empty.)
 ␘
 status=3
 
 $ # Arguments referencing files that don't exist fail with status 4
 $ jb @/does/not/exist; echo status=$?
-...
-json(): failed to read file referenced by argument: '/does/not/exist' from '@/does/not/exist'
+/workspaces/json.bash/bin/jb: line 1254: /does/not/exist: No such file or directory
+json(): Could not open the file '/does/not/exist' referenced as the value of argument '@/does/not/exist'.
 ␘
 status=4
 ```
@@ -580,17 +588,17 @@ status=4
 
 ```console tesh-session="error-handling-upstream-error" tesh-exitcodes="0 1"
 $ # The jb call 3 levels deep reading the missing file ./not-found fails
-$ jb club:json@=<(
->   jb name="jb Users" members:json[]@=<(
->     jb name=h4l; jb name@=./not-found
+$ jb club:json@<(
+>   jb name="jb Users" members:json[]@<(
+>     jb name=h4l; jb name@./not-found
 >   )
 > )
-/.../bin/jb: line ...: ./not-found: No such file or directory
-json(): failed to read file referenced by argument: './not-found' from 'name@=./not-found'
+...: ./not-found: No such file or directory
+json(): Could not open the file './not-found' referenced as the value of argument 'name@./not-found'.
 json.encode_json(): not all inputs are valid JSON: '{"name":"h4l"}' $'\030'
-json(): failed to encode file contents as json: '/dev/fd/...' from 'members:json[]@=/dev/fd/...'
+json(): Could not encode the value of argument 'members:json[]@/dev/fd/...' as an array with 'json' values. Read from file /dev/fd/..., split into chunks on $'\n', interpreted chunks with 'raw' format.
 json.encode_json(): not all inputs are valid JSON: $'\030'
-json(): failed to encode file contents as json: '/dev/fd/...' from 'club:json@=/dev/fd/...'
+json(): Could not encode the value of argument 'club:json@/dev/fd/...' as a 'json' value. Read from file /dev/fd/..., up to the first 0x00 byte or end-of-file.
 ␘
 ```
 
@@ -622,16 +630,21 @@ to get this wrong.
 
 It's safe to use untrusted input in:
 
-- Inline values — after the `=` in an argument.
+- Inline values — after the value's `=` in an argument.
 
-  With argument `key:string=value` Anything after the first unescaped `=` in an
-  argument is used as-is and not interpreted/unescaped, so it can contain
-  untrusted input.
+  With argument `key:type=value` Anything after the value's `=` in an argument
+  is used as-is and not interpreted/unescaped, so it can contain untrusted
+  input.
+
+  The `=` must be preceded by a key or `:` (type section marker), otherwise an
+  argument starting with a `=` such as `=foo` is parsed as a key, which could
+  allow text inserted into the argument to be parsed as the value if not escaped
+  correctly.
 
 - Variable references — the _value_ held in a variable referenced by an
   argument.
 
-  With argument `@=foo`, the value of `$foo` is is used as-is and not
+  With argument `@foo`, the value of `$foo` is is used as-is and not
   interpreted/unescaped, so it can contain untrusted input.
 
 - File references — the contents of a file referenced by a argument.
@@ -640,8 +653,8 @@ It's safe to use untrusted input in:
   untrusted input.
 
 In general, avoid inserting user-provided input into the argument string passed
-to jb before the `=`. To create dynamic object property names from user input,
-store the user-provided value in a variable or file, and use an `@ref` to
+to jb before the value's `=`. To create dynamic object property names from user
+input, store the user-provided value in a variable or file, and use an `@ref` to
 reference it:
 
 ```console tesh-session="safe-dynamic-prop"
@@ -649,19 +662,19 @@ $ dynamic_prop='Untrusted' jb @dynamic_prop=value
 {"Untrusted":"value"}
 ```
 
-If you use user-input to construct an argument, they could insert an `@ref` of
+If you format user-input into an argument string, they could insert an `@ref` of
 their choice, and pull in a file or variable they shouldn't have access to. You
 can escape special characters in argument values by doubling characters, but
 it's safer to use an `@ref` — if you get an `@ref` wrong you get an error,
 whereas if you get escaping wrong, you may create a vulnerability.
 
 References are not supported when specifying argument attributes, like
-`[split=x]`, so `]` and `,` in these values need to be escaped by doubling them.
-E.g. to use a comma as a split char, use `[split=,,]`:
+`/empty=x/`, so `,` in these values needs to be escaped by doubling it. E.g. to
+use a comma as a split char, use `/empty=string='Why,, yes.'/`:
 
 ```console tesh-session="split-comma"
-$ jb things[split=,,]=a,b,c
-{"things":["a","b","c"]}
+$ empty= jb msg:/empty=string='Why,, yes.'/??@empty
+{"msg":"Why, yes."}
 ```
 
 To pass a dynamic file location, use a `_FILE` variable reference or read the
@@ -672,10 +685,10 @@ separately validate that the referenced file should be accessible.
 $ printf 'Example\nContent\n' > /tmp/example
 $ user_file=/tmp/example
 
-$ user_specified_FILE=$user_file jb user_file_content@=user_specified
+$ user_specified_FILE=$user_file jb user_file_content@user_specified
 {"user_file_content":"Example\nContent\n"}
 
-$ jb user_file_content@=<(cat "$user_file")
+$ jb user_file_content@<(cat "$user_file")
 {"user_file_content":"Example\nContent\n"}
 
 $ jb user_file_content="$(<"$user_file")"  # $() strips the trailing newline
@@ -692,12 +705,12 @@ in shell variables are not exposed as process arguments when using `@var`:
 $ password=hunter2
 
 $ # shell $var — secret's value is in process arguments
-$ jb password="$password" visible_args[split=]@=/proc/self/cmdline
-{"password":"hunter2","visible_args":["bash","/.../bin/jb","password=hunter2","visible_args[split=]@=/proc/self/cmdline"]}
+$ jb password="$password" visible_args:[]/split=/@/proc/self/cmdline
+{"password":"hunter2","visible_args":["bash","/.../bin/jb","password=hunter2","visible_args:[]/split=/@/proc/self/cmdline"]}
 
 $ # jb @var — only the variable name is in process arguments
-$ password=$password jb @password visible_args[split=]@=/proc/self/cmdline
-{"password":"hunter2","visible_args":["bash","/.../bin/jb","@password","visible_args[split=]@=/proc/self/cmdline"]}
+$ password=$password jb @password visible_args:[]/split=/@/proc/self/cmdline
+{"password":"hunter2","visible_args":["bash","/.../bin/jb","@password","visible_args:[]/split=/@/proc/self/cmdline"]}
 ```
 
 ### `jb-cat`, `jb-echo`, `jb-stream` utility programs
@@ -821,7 +834,10 @@ Bash.
 
 I wasn't planning to write something comparable to `jo` when I started, but idea
 of a `jo`-like program that only depends on bash kind of appealed to me. Maybe I
-should port it to a more suitable language though. 🙃
+should port it to a more suitable language though. The program is a now a lot
+larger in size and scope than I originally anticipated when starting, I
+certainly wouldn't have written it in bash if I'd known how large it'd become.
+🙃
 
 [jo]: https://github.com/jpmens/jo
 [jq]: https://github.com/jqlang/jq
