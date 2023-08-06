@@ -2196,9 +2196,8 @@ expected: $expected
   json fromjson:{:json}='{"foo":"bar"}' fromattrs:{:attrs}@<(echo 'bar=baz') \
     | equals_json '{"fromjson":{"foo":"bar"},"fromattrs":{"bar":"baz"}}'
 
-  find bin -type f -exec wc -w {} + | head -n-1 | awk '{ print $2"="$1 }' \
-    | json files:number{:attrs}@/dev/stdin \
-    | equals_json '{"files":{"bin/jb-cat":260,"bin/jb-echo":85,"bin/jb-stream":167}}'
+  env -i HOME=/home/foo PATH=/foo:/bar | json env:{}@/dev/stdin \
+    | equals_json '{"env":{"HOME":"/home/foo","PATH":"/foo:/bar"}}'
 }
 
 @test "json.bash json :: ... splat arguments" {
