@@ -882,7 +882,7 @@ function json.parse_attributes() {
       "than '=' ',' or — ${_r@Q}" >&2; return 1
   fi
 
-  if [[ ${_jpa_in[*]?} =~ ("${_r:?}${_r:?}"|',,'|'==') ]]; then
+  if [[ ${_jpa_in[*]} =~ ("${_r:?}${_r:?}"|',,'|'==') ]]; then
     _jpa_attrskv=("${_jpa_in[@]//,,/"\\${_r:?}1"}")  # Re-escape escapes so we can use , and = unambiguously.
     _jpa_attrskv=("${_jpa_attrskv[@]//==/"\\${_r:?}2"}")  # We make use of / in this temporary escape sequence, as / must be escaped as //
     # To remove empty inputs, we normalise commas by adding one at the start and

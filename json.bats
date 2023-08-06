@@ -1648,10 +1648,15 @@ val_flag_strict = '+'
   ex_values=(1 2 3 4); assert_array_equals values ex_values
 
   # Input from array
+  src=()
+  attrs=(); out=attrs in=src json.parse_attributes
+  expected=(); assert_array_equals attrs expected
+
   src=('' 'a=1,b=2' '' 'c=3,d=4' '')
   attrs=(); out=attrs in=src json.parse_attributes
-  keys=() values=(); out=keys,values in=src json.parse_attributes
   expected=(['a']='1' ['b']='2' ['c']='3' ['d']='4'); assert_array_equals attrs expected
+
+  keys=() values=(); out=keys,values in=src json.parse_attributes
   ex_keys=(a b c d); assert_array_equals keys ex_keys
   ex_values=(1 2 3 4); assert_array_equals values ex_values
 
