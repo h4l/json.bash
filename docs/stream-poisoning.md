@@ -6,17 +6,17 @@
 
 ```console tesh-session="error-handling-upstream-error" tesh-exitcodes="0 1"
 $ # The jb call 3 levels deep reading the missing file ./not-found fails
-$ jb club:json@=<(
->   jb name="jb Users" members:json[]@=<(
->     jb name=h4l; jb name@=./not-found
+$ jb club:json@<(
+>   jb name="jb Users" members:json[]@<(
+>     jb name=h4l; jb name@./not-found
 >   )
 > )
-/workspaces/json.bash/bin/jb: line ...: ./not-found: No such file or directory
-json(): failed to read file referenced by argument: './not-found' from 'name@=./not-found'
+/.../bin/jb: line ...: ./not-found: No such file or directory
+json(): Could not open the file './not-found' referenced as the value of argument 'name@./not-found'.
 json.encode_json(): not all inputs are valid JSON: '{"name":"h4l"}' $'\030'
-json(): failed to encode file contents as json: '/dev/fd/...' from 'members:json[]@=/dev/fd/...'
+json(): Could not encode the value of argument 'members:json[]@/dev/fd/...' as an array with 'json' values. Read from file /dev/fd/..., split into chunks on $'\n', interpreted chunks with 'raw' format.
 json.encode_json(): not all inputs are valid JSON: $'\030'
-json(): failed to encode file contents as json: '/dev/fd/...' from 'club:json@=/dev/fd/...'
+json(): Could not encode the value of argument 'club:json@/dev/fd/...' as a 'json' value. Read from file /dev/fd/..., up to the first 0x00 byte or end-of-file.
 ␘
 ```
 
@@ -65,7 +65,7 @@ character.
 ```console tesh-session="error-handling-show-cancel"
 $ # \030 is the octal escape for Cancel (0x18 / decimal 24)
 $ jb @error | { read jbout; echo "jb stdout: ${jbout@Q}"; }
-json(): argument references unbound variable: $error from '@error'
+json(): Could not process argument '@error'. Its value references unbound variable $error. (Use the '~' flag after the :type to treat a missing value as empty.)
 jb stdout: $'\030'
 ```
 
@@ -76,7 +76,7 @@ failed program to go unnoticed. For example:
 
 ```console tesh-session="error-handling-hidden-error"
 $ # Everything OK here — 3 things
-$ jb important_things:json[]@=<(
+$ jb important_things:json[]@<(
 >   echo '{"name":"Thing #1"}';
 >   echo '{"name":"Thing #2"}';
 >   echo '{"name":"Thing #3"}';
@@ -84,7 +84,7 @@ $ jb important_things:json[]@=<(
 {"important_things":[{"name":"Thing #1"},{"name":"Thing #2"},{"name":"Thing #3"}]}
 
 $ # What if the process creating Thing #2 fails with an error? We silently loose it.
-$ jb important_things:json[]@=<(
+$ jb important_things:json[]@<(
 >   echo '{"name":"Thing #1"}';
 >   false && echo '{"name":"Thing #2"}';  # ← 💥
 >   echo '{"name":"Thing #3"}';
