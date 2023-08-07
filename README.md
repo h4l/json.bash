@@ -639,7 +639,7 @@ $ # The file can be split on a different character by naming it in the []
 $ jb @./fruit:[:]
 {"fruit":["apple","pear","grape"]}
 
-$ # which is shorthand for: (two commas are needed)
+$ # Which is shorthand for
 $ jb @./fruit:/collection=array,split=:/
 {"fruit":["apple","pear","grape"]}
 
