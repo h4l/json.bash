@@ -4,3 +4,4 @@
 !*.bats
 !bin/*
 !*.md
+!docs/*.md
