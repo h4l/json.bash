@@ -66,38 +66,42 @@ like `jq`.
 
 ## Install
 
-### OS Package
-
-Packages are available for any package manager supported by [`fpm`][fpm] (at
-least apk, deb, freebsd, rpm, sh (self extracting), tar, possibly more).
-
-We publish a container image that generates a package file in whichever format
-you like:
-
-```Console
-$ docker container run --rm -v "$(pwd):/pkg" ghcr.io/h4l/json.bash/pkg:0.2.0-dev deb
-Generating: /pkg/json.bash_0.2.0-dev.deb
-$ ls
-json.bash_0.2.0-dev.deb
-$ dpkg -i /pkg/json.bash_0.2.0-dev.deb
-```
-
-[fpm]: https://fpm.readthedocs.io/
-
 ### Container image
 
-We publish image with `jb-*` and `json.bash`, perhaps useful to try this without
-installing.
+We publish the container image
+[`ghcr.io/h4l/json.bash/jb`](https://github.com/h4l/json.bash/pkgs/container/json.bash%2Fjb)
+with `jb-*` and `json.bash`, perhaps useful to try without installing.
 
 ```Console
-$ docker container run --rm ghcr.io/h4l/json.bash/jb:0.2.0-dev msg=Hi
+$ docker container run --rm ghcr.io/h4l/json.bash/jb msg=Hi
 {"msg":"Hi"}
 
 $ # Get a bash shell to try things interactively
-$ docker container run --rm --entrypoint bash -it ghcr.io/h4l/json.bash/jb:0.2.0-dev
+$ docker container run --rm --entrypoint bash -it ghcr.io/h4l/json.bash/jb
 bash-5.2# jb os-release:{}@<(xargs < /etc/os-release env -i)
 {"os-release":{"NAME":"Alpine Linux","ID":"alpine","VERSION_ID":"3.18.2","PRETTY_NAME":"Alpine Linux v3.18","HOME_URL":"https://alpinelinux.org/","BUG_REPORT_URL":"https://gitlab.alpinelinux.org/alpine/aports/-/issues"}}
 ```
+
+### OS Packages
+
+Package-manager files are available for any package manager supported by
+[`fpm`][fpm] (at least apk, deb, freebsd, rpm, sh (self extracting), tar,
+possibly more).
+
+We publish the container image
+[`ghcr.io/h4l/json.bash/pkg`](https://github.com/h4l/json.bash/pkgs/container/json.bash%2Fpkg)
+that can generate a package file in whichever format you like:
+
+```Console
+$ docker container run --rm -v "$(pwd):/pkg" ghcr.io/h4l/json.bash/pkg deb
+Generating: /pkg/json.bash_0.2.2-dev.deb
+
+$ ls
+json.bash_0.2.2-dev.deb
+$ dpkg -i /pkg/json.bash_0.2.2-dev.deb
+```
+
+[fpm]: https://fpm.readthedocs.io/
 
 ### Manual install
 
