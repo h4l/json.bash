@@ -1,0 +1,61 @@
+name: Build & publish end-user images
+on:
+  push:
+    branches:
+      - main
+
+env:
+  REGISTRY: ghcr.io
+  TAG_PREFIX: ghcr.io/${{ github.repository }}
+
+jobs:
+  container_images:
+    name: Build & publish end-user images
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@c85c95e3d7251135ab7dc9ce3241c5835cc595a9
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4c0219f9ac95b02789c1075625400b2acbff50b1
+
+      - name: Log in to the container registry
+        uses: docker/login-action@465a07811f14bebb1938fbed4728c6a1ff8901fc
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Determine version
+        id: version
+        run: |
+          if [[ ${GITHUB_REF:?} =~ ^refs/tags/v([0-9].*)$ ]]; then
+            tag_version=BASH_REMATCH[1]
+          else
+            # use the default in docker-bake.hcl
+            tag_version=''
+          fi
+          echo "tag_version=${tag_version?}" | tee -a "${GITHUB_OUTPUT:?}"
+
+          push=false
+          if [[ ${GITHUB_REF:?} =~ ^refs/tags/v[0-9]|^refs/heads/main$ ]]; then
+            push=true
+          fi
+          echo "push=${push:?}" | tee -a "${GITHUB_OUTPUT:?}"
+
+      - name: Build & publish
+        uses: docker/bake-action@f32f8b8d70bc284af19f8148dd14ad1d2fbc6c28
+        env:
+          JSON_BASH_VERSION: ${{ steps.version.outputs.tag_version }}
+        with:
+          targets: pkg,jb
+          files: docker-bake.hcl
+          provenance: true
+          sbom: true
+          push: ${{ steps.version.outputs.push }}
+          set: |
+            *.cache-from=type=gha
+            *.cache-to=type=gha,mode=max
