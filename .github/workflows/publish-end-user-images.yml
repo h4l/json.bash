@@ -33,7 +33,7 @@ jobs:
         id: version
         run: |
           if [[ ${GITHUB_REF:?} =~ ^refs/tags/v([0-9].*)$ ]]; then
-            tag_version=BASH_REMATCH[1]
+            tag_version=${BASH_REMATCH[1]:?}
           else
             # use the default in docker-bake.hcl
             tag_version=''
