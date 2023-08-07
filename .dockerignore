@@ -1,5 +1,6 @@
 .*
 *
+!.git
 !*.bash
 !*.bats
 !bin/*

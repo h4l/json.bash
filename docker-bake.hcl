@@ -1,4 +1,3 @@
-BATS_GIT_REV = "v1.9.0"
 TESH_SOURCE = "tesh>=0.3.0,<0.4"
 # Official repo is https://git.savannah.gnu.org/git/bash.git
 JB_BASH_GIT_URL = "https://github.com/bminor/bash.git"
@@ -8,18 +7,19 @@ NOW = "${timestamp()}"
 variable CI {
   default = "false"
 }
+_DEFAULT_JSON_BASH_VERSION = "0.2.0-dev"
+variable JSON_BASH_VERSION {
+  default = ""
+}
 
 BASH_VERSIONS = ["4.4.19", "5.0.18", "5.1.16", "5.2.15"]
 
 target "base" {
   args = {
+    BAKE_LOCAL_PLATFORM = BAKE_LOCAL_PLATFORM
     TAG_BASE = TAG_BASE
-    BATS_GIT_REV = BATS_GIT_REV
-    TESH_SOURCE = TESH_SOURCE
   }
-  contexts = {
-    bats-core-git = "https://github.com/bats-core/bats-core.git"
-  }
+  platforms = CI == "true" ? ["linux/amd64", "linux/arm64"] : [BAKE_LOCAL_PLATFORM]
 }
 
 target "devcontainer" {
@@ -44,8 +44,12 @@ target "ci" {
   inherits = ["base"]
   contexts = {
     bash-git = "${JB_BASH_GIT_URL}#${bash.sha}"
+    bats-core-git = "https://github.com/bats-core/bats-core.git"
   }
-  args = { TEST_OS = os }
+  args = {
+    TEST_OS = os
+    TESH_SOURCE = TESH_SOURCE
+  }
   target = "ci"
   labels = {
     "com.github.h4l.json-bash.os" = os
@@ -54,12 +58,9 @@ target "ci" {
   tags = ["${TAG_BASE}/ci:${os}-bash_${bash.ver}"]
 }
 
-target "ci-debian" {
-  matrix = {
-    bash = BASH_VERSIONS
-  }
-
-  name = "ci-debian-bash_${replace(bash, ".", "-")}"
+target "tests_base" {
+  inherits = ["base"]
+  platforms = [BAKE_LOCAL_PLATFORM]
 }
 
 TEST_MATRIX = { bash = BASH_VERSIONS, os = ["debian", "alpine"] }
@@ -68,7 +69,7 @@ target "bats" {
   matrix = TEST_MATRIX
 
   name = "bats-${os}-bash_${replace(bash, ".", "-")}"
-  inherits = ["base"]
+  inherits = ["tests_base"]
   args = {
     TEST_ENV_TAG = "${os}-bash_${bash}"
     CI = CI
@@ -83,7 +84,7 @@ target "tesh" {
   matrix = TEST_MATRIX
 
   name = "tesh-${os}-bash_${replace(bash, ".", "-")}"
-  inherits = ["base"]
+  inherits = ["tests_base"]
   args = {
     TEST_ENV_TAG = "${os}-bash_${bash}"
   }
@@ -91,4 +92,52 @@ target "tesh" {
   no-cache-filter = ["run-tesh"]  # always re-run tests
   target = "result-tesh"
   output = ["type=local,dest=build/${NOW}/tesh-debian-bash_${bash}/"]
+}
+
+function "json_bash_version" {
+  params = []
+  result = JSON_BASH_VERSION == "" ? _DEFAULT_JSON_BASH_VERSION : JSON_BASH_VERSION
+}
+
+function "parse_version" {
+  params = []
+  result = regex("^(\\d+)\\.(\\d+)\\.(\\d+)$", json_bash_version())
+}
+
+function "image_tags" {
+  params = []
+  result = try(
+    // release version
+    [
+      "latest",
+      "${parse_version()[0]}",
+      "${parse_version()[0]}.${parse_version()[1]}",
+      "${parse_version()[0]}.${parse_version()[1]}.${parse_version()[2]}",
+    ],
+    // non-release version
+    [json_bash_version()]
+  )
+}
+
+target "end_user_base" {
+  inherits = ["base"]
+  args = {
+    JSON_BASH_VERSION = json_bash_version()
+  }
+}
+
+// The pkg image can generate json.bash package-manager packages in various formats
+target "pkg" {
+  inherits = ["end_user_base"]
+  target = "pkg"
+  tags = formatlist("${TAG_BASE}/pkg:%s", image_tags())
+  contexts = { repo = "." }
+}
+
+// The jb image contains json.bash & the jb-* programs
+target "jb" {
+  inherits = ["end_user_base"]
+  target = "jb"
+  tags = formatlist("${TAG_BASE}/jb:%s", image_tags())
+  contexts = { repo = "." }
 }
