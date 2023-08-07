@@ -1,0 +1,52 @@
+name: "Test"
+on:
+  pull_request:
+
+jobs:
+  bats_tests:
+    name: Bats Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@c85c95e3d7251135ab7dc9ce3241c5835cc595a9
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4c0219f9ac95b02789c1075625400b2acbff50b1
+
+      - name: Run Bats Test Matrix
+        uses: docker/bake-action@f32f8b8d70bc284af19f8148dd14ad1d2fbc6c28
+        with:
+          targets: bats
+          files: docker-bake.hcl
+          set: |
+            *.cache-from=type=gha
+            *.cache-to=type=gha,mode=max
+
+      - name: Report Results
+        run: |
+          readarray -d '' builds \
+            < <(find build -mindepth 2 -maxdepth 2 -type d -print0)
+
+          if [[ ${#builds[@]} == 0 ]]; then
+            echo "No build output dirs found" >&2
+            exit 1
+          fi
+
+          failures=()
+          for build in "${builds[@]}"; do
+            if [[ -f "${build:?}/FAIL" ]]; then
+              failures+=("${build:?}")
+              echo "Build failed: ${build:?}"
+              if [[ -f "${build:?}/bats.log" ]]; then
+                echo "Build ${build:?} failed — log output follows:"
+                cat "${build:?}/bats.log"
+              else
+                echo "Build ${build:?} failed — log file not found"
+                fi
+            else
+              echo "Build ${build:?} passed"
+            fi
+          done
+
+          if [[ ${#failures[@]} != 0 ]]; then exit 1; fi
