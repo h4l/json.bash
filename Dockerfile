@@ -81,6 +81,7 @@ COPY --from=run-tesh /workspace/build .
 
 # fpm creates all sorts of package-manager packages https://fpm.readthedocs.io/
 FROM ruby:3 AS fpm
+RUN apt-get update && apt-get install -y rpm
 RUN gem install fpm
 
 
