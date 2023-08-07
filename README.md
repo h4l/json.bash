@@ -66,7 +66,45 @@ like `jq`.
 
 ## Install
 
-Run these commands to install:
+### OS Package
+
+Packages are available for any package manager supported by [`fpm`][fpm] (at
+least apk, deb, freebsd, rpm, sh (self extracting), tar, possibly more).
+
+We publish a container image that generates a package file in whichever format
+you like:
+
+```Console
+$ docker container run --rm -v "$(pwd):/pkg" ghcr.io/h4l/json.bash/pkg:0.2.0-dev deb
+Generating: /pkg/json.bash_0.2.0-dev.deb
+$ ls
+json.bash_0.2.0-dev.deb
+$ dpkg -i /pkg/json.bash_0.2.0-dev.deb
+```
+
+[fpm]: https://fpm.readthedocs.io/
+
+### Container image
+
+We publish image with `jb-*` and `json.bash`, perhaps useful to try this without
+installing.
+
+```Console
+$ docker container run --rm ghcr.io/h4l/json.bash/jb:0.2.0-dev msg=Hi
+{"msg":"Hi"}
+
+$ # Get a bash shell to try things interactively
+$ docker container run --rm --entrypoint bash -it ghcr.io/h4l/json.bash/jb:0.2.0-dev
+bash-5.2# jb os-release:{}@<(xargs < /etc/os-release env -i)
+{"os-release":{"NAME":"Alpine Linux","ID":"alpine","VERSION_ID":"3.18.2","PRETTY_NAME":"Alpine Linux v3.18","HOME_URL":"https://alpinelinux.org/","BUG_REPORT_URL":"https://gitlab.alpinelinux.org/alpine/aports/-/issues"}}
+```
+
+### Manual install
+
+Installing manually is quite straightforward.
+
+<details>
+  <summary>Expand this for instructions</summary>
 
 ```bash
 # Alternatively, use /usr/local/bin to install system-wide
@@ -90,6 +128,8 @@ done
 To uninstall, remove `json.bash`, `jb`, `jb-array`, `jb-echo`, `jb-cat` and
 `jb-stream` from the directory you installed them to (run `which -a json.bash`
 to find where it is).
+
+</details>
 
 ## How-to guides
 
