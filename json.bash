@@ -1616,7 +1616,7 @@ Examples:
   {"msg":"Hello World","size":42,"enable":true,"data":false}
 
   # Reference variables with @name
-  $ id=42 date=\$(date --iso) ${prog_obj:?} @id created@=date modified@=date
+  $ id=42 date=\$(date --iso) ${prog_obj:?} @id created@date modified@date
   {"id":"42","created":"2023-06-23","modified":"2023-06-23"}
 
   # Reference files with absolute paths, or relative paths starting ./
@@ -1624,23 +1624,23 @@ Examples:
   {"password":"hunter2"}
 
   # Nest jb calls using shell process substitution & file references
-  $ jb type=club members:json[]@=<(jb name=Bob; jb name=Alice)
+  $ jb type=club members:json[]@<(jb name=Bob; jb name=Alice)
   {"type":"club","members":[{"name":"Bob"},{"name":"Alice"}]}
 
-  $ jb counts:number[]@=<(seq 3) names[:]=Bob:Alice
+  $ jb counts:number[]@<(seq 3) names:[,]=Bob,Alice
   {"counts":[1,2,3],"names":["Bob","Alice"]}
 
   # Create arrays with ${prog_array}
-  $ ${prog_array:?} '*.md' :json@=<(${prog_obj:?} max_width:number=80)
-  ["*.md",{"max_width":80}]
+  $ ${prog_array:?} '*.md' :number{}=max_width=80,indent=2
+  ["*.md",{"max_width":80,"indent":2}]
 
   # Use special OS files to read stdin
-  $ printf 'foo\nbar\n' | jb @/dev/stdin[]
+  $ printf 'foo\nbar\n' | jb @/dev/stdin:[]
   {"stdin":["foo","bar"]}
 
   # ...or other fun things
-  $ jb args[split=]@=/proc/self/cmdline
-  {"args":["bash","/workspaces/json.bash/bin/jb","args[split=]@=/proc/self/cmdline"]}
+  $ jb args:[]/split=/@/proc/self/cmdline
+  {"args":["bash","/workspaces/json.bash/bin/jb","args:[]/split=/@/proc/self/cmdline"]}
 
   # In a bash script/shell, source json.bash and use the json function
   $ source json.bash
