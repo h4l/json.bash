@@ -731,7 +731,7 @@ status=3
 
 $ # Arguments referencing files that don't exist fail with status 4
 $ jb @/does/not/exist; echo status=$?
-/workspaces/json.bash/bin/jb: line 1254: /does/not/exist: No such file or directory
+/.../bin/jb: line ...: /does/not/exist: No such file or directory
 json(): Could not open the file '/does/not/exist' referenced as the value of argument '@/does/not/exist'.
 ␘
 status=4
