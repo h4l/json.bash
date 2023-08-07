@@ -1,0 +1,49 @@
+name: "Publish CI Container Images"
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "Dockerfile"
+      - "docker-bake.hcl"
+  schedule:
+    # weekly, Tuesday @ 18:43
+    - cron: 43 18 * * 2
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  TAG_PREFIX: ghcr.io/${{ github.repository }}
+
+jobs:
+  ci_images:
+    name: Build & Publish CI Container Images
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@c85c95e3d7251135ab7dc9ce3241c5835cc595a9
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4c0219f9ac95b02789c1075625400b2acbff50b1
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@465a07811f14bebb1938fbed4728c6a1ff8901fc
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & Publish CI Container Images
+        uses: docker/bake-action@f32f8b8d70bc284af19f8148dd14ad1d2fbc6c28
+        with:
+          targets: ci
+          files: docker-bake.hcl
+          provenance: true
+          sbom: true
+          push: true
+          set: |
+            *.cache-from=type=gha
+            *.cache-to=type=gha,mode=max
