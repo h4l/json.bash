@@ -1,4 +1,4 @@
-ARG TESH_SOURCE TEST_OS TAG_BASE TEST_ENV_TAG=__not_set__
+ARG TESH_SOURCE TEST_OS TAG_BASE TEST_ENV_TAG=__not_set__ CI
 
 
 FROM alpine:latest AS alpine-bash-from-src
@@ -54,6 +54,7 @@ FROM ${TAG_BASE:?}/ci:${TEST_ENV_TAG} AS run-bats
 WORKDIR /workspace/repo
 RUN mkdir -p /workspace/build
 ENV PATH="/workspace/repo/bin:$PATH"
+ARG CI=false
 RUN --mount=from=repo,source=/,target=/workspace/repo { \
     { bash --version; \
       bats --print-output-on-failure --formatter tap13 json.bats utilities.bats; \

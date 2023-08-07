@@ -6,6 +6,11 @@ bats_require_minimum_version 1.5.0
 
 load json.bash
 
+TIMEOUT_SECONDS=1
+if [[ ${CI:-false} == true ]]; then
+  TIMEOUT_SECONDS=60
+fi
+
 setup() {
   cd "${BATS_TEST_DIRNAME:?}"
 }
@@ -839,7 +844,7 @@ function get_value_encode_examples() {
 
 @test "json.encode_value_from_file :: stops reading after null byte" {
   type=string run json.encode_value_from_file \
-      < <(printf "foo\x00"; timeout 3 yes )
+      < <(printf "foo\x00"; timeout "${TIMEOUT_SECONDS:?}" yes )
   [[ $status == 0 && $output == '"foo"' ]]
 }
 
@@ -1034,7 +1039,7 @@ function get_object_encode_examples() {
   local json_buffered_chunk_count=2
   # We stop reading the stream if an element is invalid
   split=$'\n' type=number format=raw run json.stream_encode_array_entries \
-    < <(seq 3; timeout 3 yes ) # stream a series of non-int values forever
+    < <(seq 3; timeout "${TIMEOUT_SECONDS:?}" yes ) # stream a series of non-int values forever
 
   [[ $status == 1 && $output == \
     "1,2,json.encode_number(): not all inputs are numbers: '3' 'y'" ]]
@@ -1474,7 +1479,7 @@ function assert_arg_parse2_invalid_argument() {
 }
 
 function assert_arg_parse2() {
-  expected=$(timeout 1 cat)
+  expected=$(timeout "${TIMEOUT_SECONDS:?}" cat)
   expected=${expected/#+([ $'\n'])/}
   expected=${expected/%+([ $'\n'])/}
   local -A attrs
@@ -1834,7 +1839,7 @@ function equals_json() {
     echo "equals_json: usage: echo '{...}' | equals_json '{...}'" >&2; return 1
   fi
 
-  actual=$(timeout 1 cat) \
+  actual=$(timeout "${TIMEOUT_SECONDS:?}" cat) \
     || { echo "equals_json: failed to read stdin" >&2; return 1; }
   expected=$(jq -cne "${1:?}") \
     || { echo "equals_json: jq failed to evalute expected JSON" >&2; return 1; }

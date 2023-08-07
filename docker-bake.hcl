@@ -5,6 +5,10 @@ JB_BASH_GIT_URL = "https://github.com/bminor/bash.git"
 TAG_BASE = "ghcr.io/h4l/json.bash"
 NOW = "${timestamp()}"
 
+variable CI {
+  default = "false"
+}
+
 BASH_VERSIONS = ["4.4.19", "5.0.18", "5.1.16", "5.2.15"]
 
 target "base" {
@@ -67,6 +71,7 @@ target "bats" {
   inherits = ["base"]
   args = {
     TEST_ENV_TAG = "${os}-bash_${bash}"
+    CI = CI
   }
   contexts = { repo = "." }
   no-cache-filter = ["run-bats"]  # always re-run tests
