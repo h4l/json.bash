@@ -185,12 +185,11 @@ type             = ( "string" | "number" | "bool" | "true" | "false" | "null"
 
 value-prefix     = [ flags ] start-of-value
 flags            = any-flag any-flag*
-any-flag         = ( required-flag | error-empty-flag | sub-empty-flag | omit-empty-flag )
+any-flag         = +( required-flag | error-empty-flag | allow-empty-flag )
 splat            = "..."
 required-flag    = "+"
 error-empty-flag = "~"
-omit-empty-flag  = "?"
-sub-empty-flag   = "??"
+allow-empty-flag  = "?"
 start-of-ref     = "@"
 start-of-str     = "="
 start-of-key     = ( start-of-value | not-splat-flag-or-start-char )
