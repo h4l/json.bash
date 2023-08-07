@@ -77,7 +77,7 @@ $ docker container run --rm ghcr.io/h4l/json.bash/jb msg=Hi
 {"msg":"Hi"}
 
 $ # Get a bash shell to try things interactively
-$ docker container run --rm --entrypoint bash -it ghcr.io/h4l/json.bash/jb
+$ docker container run --rm -it ghcr.io/h4l/json.bash/jb
 bash-5.2# jb os-release:{}@<(xargs < /etc/os-release env -i)
 {"os-release":{"NAME":"Alpine Linux","ID":"alpine","VERSION_ID":"3.18.2","PRETTY_NAME":"Alpine Linux v3.18","HOME_URL":"https://alpinelinux.org/","BUG_REPORT_URL":"https://gitlab.alpinelinux.org/alpine/aports/-/issues"}}
 ```
