@@ -8,6 +8,11 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [0.2.2] — 2023-08-07
+
+No functional changes, `0.2.1` wasn't published because of a cherry-picking
+fail.
+
 ## [0.2.1] — 2023-08-07
 
 No functional changes, `0.2.0` wasn't published because of a CI fail.
@@ -50,7 +55,8 @@ No functional changes, `0.2.0` wasn't published because of a CI fail.
 
 Initial release.
 
-[unreleased]: https://github.com/h4l/json.bash/compare/v0.2.1...HEAD
+[unreleased]: https://github.com/h4l/json.bash/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/h4l/json.bash/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/h4l/json.bash/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/h4l/json.bash/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/h4l/json.bash/compare/1aa11...v0.1.0
