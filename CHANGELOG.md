@@ -8,6 +8,12 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [0.2.1] — 2023-08-07
+
+No functional changes, `0.2.0` wasn't published because of a CI fail.
+
+## [0.2.0] — 2023-08-07
+
 ### Added
 
 - Revised argument syntax to support several new features
@@ -23,6 +29,10 @@ and this project adheres to
   - Arguments with empty inputs can be omitted using `??` flag
   - Arguments can enforce non-empty inputs using `+` flag
 - Alpine linux is supported
+- Container image `ghcr.io/h4l/json.bash/jb`
+- OS packages
+  - Currently meta-published via a container image that can build many package
+    formats: `ghcr.io/h4l/json.bash/pkg`
 
 ### Fixed
 
@@ -40,5 +50,7 @@ and this project adheres to
 
 Initial release.
 
-[unreleased]: https://github.com/h4l/json.bash/compare/v0.1.0...HEAD
+[unreleased]: https://github.com/h4l/json.bash/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/h4l/json.bash/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/h4l/json.bash/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/h4l/json.bash/compare/1aa11...v0.1.0
