@@ -202,5 +202,19 @@ LABEL org.opencontainers.image.url="https://github.com/h4l/json.bash" \
   org.opencontainers.image.description="Command-line tool and bash library that creates JSON"
 
 RUN --mount=from=pkg-alpine,source=/pkg,target=/pkg \
-  apk add --allow-untrusted /pkg/json.bash_*.apk
-ENTRYPOINT ["/usr/bin/jb"]
+  apk add --allow-untrusted /pkg/json.bash_*.apk \
+  && apk add --no-cache jq
+RUN echo 'source json.bash' >> /root/.bashrc
+COPY --chmod=755 <<"EOF" /usr/local/bin/docker-entrypoint.sh
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ $# == 0 ]]; then
+  exec bash
+else
+  . json.bash
+  json "$@"
+fi
+EOF
+ENTRYPOINT ["docker-entrypoint.sh"]
+CMD []
