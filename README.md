@@ -97,8 +97,11 @@ to find where it is).
 1. [Object keys](#object-keys)
 1. [Object values](#object-values)
 1. [Arrays (mixed types, fixed length)](#arrays-mixed-types-fixed-length)
-1. [Value types](#value-types)
-1. [Value arrays (uniform types, variable length)](#value-arrays-uniform-types-variable-length)
+1. [Argument types](#argument-types)
+1. [Array values (uniform types, variable length)](#array-values-uniform-types-variable-length)
+1. [Object values (uniform types, variable length)](#object-values-uniform-types-variable-length)
+1. [`...` arguments (merge entries into the host object/array)](#-arguments-merge-entries-into-the-host-objectarray)
+1. [Missing / empty values](#missing--empty-values)
 1. [Nested JSON with `:json` and `:raw` types](#nested-json-with-json-and-raw-types)
 1. [File references](#file-references)
 1. [Error handling](#error-handling)
@@ -174,7 +177,7 @@ $ jb =@@handle=ok a::z=ok 1+1==2=ok
 
 ### Object values
 
-The last part of each argument, after a `=` or `@` defines the value. Values can
+The last part of each argument after a `=` or `@` defines the value. Values can
 contain their value directly, or reference a variable or file.
 
 ```console tesh-session="object-values"
@@ -250,7 +253,7 @@ variable-length arrays containing the same type.
 
 `json.array` is the Bash API equivalent of `jb-array`.
 
-### Value types
+### Argument types
 
 Values are strings unless explicitly typed.
 
@@ -316,11 +319,11 @@ $ json_defaults=num json data=42 msg:string=Hi
   <code>jb</code> CLI.)</p>
 </details>
 
-### Value arrays (uniform types, variable length)
+### Array values (uniform types, variable length)
 
-Arrays of values can be created using `[]` after the type.
+Arrays of values can be created using `[]` after the `:` type marker.
 
-```console tesh-session="array-types"
+```console tesh-session="array-values"
 $ jb sizes:number[]=42
 {"sizes":[42]}
 
@@ -334,10 +337,10 @@ $ jb sizes:number[$'\n']="$(seq 3)"
 {"sizes":[1,2,3]}
 ```
 
-Note that [file references](#file-references) are the best way to get the output
-of other programs into JSON.
+[File references](#file-references) with process substitution are the a better
+way to get the output of other programs into JSON though.
 
-```Console
+```console tesh-session="array-values"
 $ # The default type is used if the type name is left out
 $ jb sizes:[,]="1,2,3"
 {"sizes":["1","2","3"]}
@@ -363,8 +366,160 @@ $ json.array @names:string[] @sizes:number[] :null[] :bool[]=true
 [["Bob Bobson","Alice Alison"],[42,55],[null],[true]]
 
 $ # And jb-array values can be arrays as well
-$ jb-array [,]="Bob Bobson,Alice Alison" :number[,]=42,55 :null[] :bool[]=true
+$ jb-array :[,]="Bob Bobson,Alice Alison" :number[,]=42,55 :null[] :bool[]=true
 [["Bob Bobson","Alice Alison"],[42,55],[null],[true]]
+```
+
+Arrays can be created from existing JSON arrays using the `[:json]` array
+format:
+
+```console tesh-session="array-values"
+$ jb tags:[:json]="$(jb-array foo bar baz)"
+{"tags":["foo","bar","baz"]}
+
+$ # The type of values in the argument's array must match the argument type
+$ jb measures:number[:json]='[1,2,3,4]'
+{"measures":[1,2,3,4]}
+
+$ # Otherwise an error occurs
+$ jb measures:number[:json]='[1,2,"oops"]'
+json.encode_array_entries_from_json(): provided entries are not all valid JSON arrays with 'number' values — '[1,2,"oops"]'
+json(): Could not encode the value of argument 'measures:number[:json]=[1,2,"oops"]' as an array with 'number' values. Read from inline value, without splitting (one chunk), interpreted chunks with 'json' format.
+␘
+```
+
+### Object values (uniform types, variable length)
+
+Variable-length JSON objects can be created using `{}` after the `:` type
+marker. Object values use the same `key=value` syntax used in arguments'
+attributes section (`:/a=b,c=d/`).
+
+```console tesh-session="object-values"
+$ # The default type is used if the type name is left out
+$ jb sizes:{}=small=s,medium=m,large=l
+{"sizes":{"small":"s","medium":"m","large":"l"}}
+
+$ jb measurements:number{}=small=5,medium=10,large=15
+{"measurements":{"small":5,"medium":10,"large":15}}
+```
+
+Like array values (`[]`), object values consume multiple lines of input when
+reading files
+
+```console tesh-session="object-values"
+$ # env is a command-line tool that prints environment variables
+$ env -i small=s medium=m large=l
+small=s
+medium=m
+large=l
+
+$ # We can encode variables from env as a JSON object
+$ env -i small=s medium=m large=l | jb sizes:{}@/dev/stdin
+{"sizes":{"small":"s","medium":"m","large":"l"}}
+```
+
+As with array values, JSON data can be used as values:
+
+```console tesh-session="object-values"
+$ jb user=h4l repo=json.bash >> info
+$ jb @./info:{:json}
+{"info":{"user":"h4l","repo":"json.bash"}}
+
+$ jb file_types:string[,]=bash,md,hcl year_created:number=2023 >> info
+$ # The values of the JSON objects are validated to match the argument's type,
+$ # so the :json type must be used to consume arbitrary JSON
+$ jb @./info:json{:json}
+{"info":{"user":"h4l","repo":"json.bash","file_types":["bash","md","hcl"],"year_created":2023}}
+```
+
+### `...` arguments (merge entries into the host object/array)
+
+An argument prefixed with `...` (commonly called splat, spread or unpacking in
+programming languages) results in the argument's entries being merged directly
+into the object or array being created.
+
+```console tesh-session="splat"
+$ jb id=ab12 ...:=user=h4l,repo=json.bash ...:number=year=2023,min_radish_count=3
+{"id":"ab12","user":"h4l","repo":"json.bash","year":2023,"min_radish_count":3}
+
+$ seq 5 8 | jb-array :number=0 ...:number[,]=1,2,3,4 ...:number@/dev/stdin
+[0,1,2,3,4,5,6,7,8]
+```
+
+### Missing / empty values
+
+References to undefined variables, missing files or unreadable files are missing
+values. Empty array variables, empty string variables, empty files and empty
+argument values are empty values.
+
+Missing or empty keys or values are errors by default, apart from empty argument
+values, like `foo=`.
+
+The flags `+` `~` `?` and `??` alter how missing/empty values behave.
+
+| Flag | Name             | Effect                                          |
+| ---- | ---------------- | ----------------------------------------------- |
+| `+`  | strict           | All missing/empty values are errors.            |
+| `~`  | optional         | Missing files/variables are treated as empty.   |
+| `?`  | substitute empty | Empty values are substituted with a default.    |
+| `??` | omit empty       | Entries with an empty key or value are omitted. |
+
+```console tesh-session="missing-empty"
+$ # empty argument values are substituted by default
+$ jb str= num:number= bool:bool= arr:[]= obj:{}=
+{"str":"","num":0,"bool":false,"arr":[],"obj":{}}
+
+$ # Using ? substitutes the empty var for the default string, which is ""
+$ empty= jb @empty?
+{"empty":""}
+
+$ # The empty attribute controls the default value. It's interpreted as JSON.
+$ CI=true jb ci:bool/empty=false/?@CI
+{"ci":true}
+
+$ CI= jb ci:true/empty=false/?@CI
+{"ci":false}
+
+$ # empty_key controls the default value for empty keys
+$ PROP= jb ?@PROP:true/empty_key='"🤷"'/
+{"🤷":true}
+
+$ # The type= can be used to encode a raw value as JSON for empty attributes
+$ PROP=👌 jb ?@PROP:true/empty_key=string=🤷/
+{"👌":true}
+
+$ # ?? causes an empty value to be omitted entirely
+$ CI= jb ci:bool??@CI
+{}
+
+$ # ~ causes a missing value to be empty. A ? is needed to prevent the empty
+$ # value being an error.
+$ jb github_actions:bool~?@GITHUB_ACTION
+{"github_actions":false}
+
+$ # Empty variables are errors if ? isn't used.
+$ empty= jb @empty
+json.apply_empty_action(): The value of argument '@empty' must be non-empty but is empty.
+json(): Could not encode the value of argument '@empty' as a 'string' value. Read from variable $empty. (Use the '?' flag after the :type to substitute the entry's empty value with a default, or the '??' flag to omit the entry when it has an empty value.)
+␘
+
+$ # (Only the json Bash function, not the jb executable can access bash array variables.)
+$ . json.bash
+$ empty_array=()
+
+$ # Using ? substitutes the empty array for the default, which is []
+$ json @empty_array:[]?
+{"empty_array":[]}
+
+$ # Empty arrays are errors without ?.
+$ json @empty_array:[]
+json.apply_empty_action(): The value of argument '@empty_array:[]' must be non-empty but is empty.
+json(): Could not encode the value of argument '@empty_array:[]' as an array with 'string' values. Read from array-variable $empty_array. (Use the '?' flag after the :type to substitute the entry's empty value with a default, or the '??' flag to omit the entry when it has an empty value.)
+␘
+
+$ # Missing / empty files work like variables
+$ jb @./config:/empty=null/~?
+{"config":null}
 ```
 
 ### Nested JSON with `:json` and `:raw` types
