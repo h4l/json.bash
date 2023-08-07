@@ -19,8 +19,8 @@ and this project adheres to
 - Missing/empty value handling
   - Missing files / unset variables can be treated as empty inputs using `~`
     flag
-  - Arguments with empty inputs can be omitted using `?` flag
-  - Arguments with empty inputs can substitute default values using `??` flag
+  - Arguments with empty inputs can substitute default values using `?` flag
+  - Arguments with empty inputs can be omitted using `??` flag
   - Arguments can enforce non-empty inputs using `+` flag
 - Alpine linux is supported
 

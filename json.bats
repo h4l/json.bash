@@ -1507,10 +1507,10 @@ key = 'foo'
 "
   assert_arg_parse2 +~?foo <<<"
 @key = 'str'
-empty_file_key = 'omit'
+empty_file_key = ''
 empty_key = ''
-empty_str_key = 'omit'
-empty_var_key = 'omit'
+empty_str_key = ''
+empty_var_key = ''
 key = 'foo'
 key_flag_empty = '?'
 key_flag_no = '~'
@@ -1521,10 +1521,10 @@ no_key = 'empty'
   # are the same as the same as the max.
   assert_arg_parse2 ++~~???=foo <<<"
 @key = 'str'
-empty_file_key = ''
+empty_file_key = 'omit'
 empty_key = ''
-empty_str_key = ''
-empty_var_key = ''
+empty_str_key = 'omit'
+empty_var_key = 'omit'
 key = 'foo'
 key_flag_empty = '??'
 key_flag_no = '~'
@@ -1533,10 +1533,10 @@ no_key = 'empty'
 "
   assert_arg_parse2 +?+~~?@foo <<<"
 @key = 'var'
-empty_file_key = ''
+empty_file_key = 'omit'
 empty_key = ''
-empty_str_key = ''
-empty_var_key = ''
+empty_str_key = 'omit'
+empty_var_key = 'omit'
 key = 'foo'
 key_flag_empty = '??'
 key_flag_no = '~'
@@ -1563,15 +1563,15 @@ no_key = 'empty'
 @key = 'str'
 @val = 'str'
 empty = ''
-empty_file = ''
-empty_file_array = ''
-empty_file_object = ''
-empty_str = ''
-empty_str_array = ''
-empty_str_object = ''
-empty_var = ''
-empty_var_array = ''
-empty_var_object = ''
+empty_file = 'omit'
+empty_file_array = 'omit'
+empty_file_object = 'omit'
+empty_str = 'omit'
+empty_str_array = 'omit'
+empty_str_object = 'omit'
+empty_var = 'omit'
+empty_var_array = 'omit'
+empty_var_object = 'omit'
 key = 'foo'
 no_val = 'empty'
 val = ''
@@ -1596,15 +1596,15 @@ key = '='
   assert_arg_parse2 ===? <<<"
 @key = 'str'
 empty = ''
-empty_file = 'omit'
-empty_file_array = 'omit'
-empty_file_object = 'omit'
-empty_str = 'omit'
-empty_str_array = 'omit'
-empty_str_object = 'omit'
-empty_var = 'omit'
-empty_var_array = 'omit'
-empty_var_object = 'omit'
+empty_file = ''
+empty_file_array = ''
+empty_file_object = ''
+empty_str = ''
+empty_str_array = ''
+empty_str_object = ''
+empty_var = ''
+empty_var_array = ''
+empty_var_object = ''
 key = '='
 val_flag_empty = '?'
 "
@@ -1625,15 +1625,15 @@ key = '@'
   assert_arg_parse2 @@@? <<<"
 @key = 'var'
 empty = ''
-empty_file = 'omit'
-empty_file_array = 'omit'
-empty_file_object = 'omit'
-empty_str = 'omit'
-empty_str_array = 'omit'
-empty_str_object = 'omit'
-empty_var = 'omit'
-empty_var_array = 'omit'
-empty_var_object = 'omit'
+empty_file = ''
+empty_file_array = ''
+empty_file_object = ''
+empty_str = ''
+empty_str_array = ''
+empty_str_object = ''
+empty_var = ''
+empty_var_array = ''
+empty_var_object = ''
 key = '@'
 val_flag_empty = '?'
 "
@@ -1691,15 +1691,15 @@ d= = 'e==f'
 "
   assert_arg_parse2 :++~~??? <<<"
 empty = ''
-empty_file = ''
-empty_file_array = ''
-empty_file_object = ''
-empty_str = ''
-empty_str_array = ''
-empty_str_object = ''
-empty_var = ''
-empty_var_array = ''
-empty_var_object = ''
+empty_file = 'omit'
+empty_file_array = 'omit'
+empty_file_object = 'omit'
+empty_str = 'omit'
+empty_str_array = 'omit'
+empty_str_object = 'omit'
+empty_var = 'omit'
+empty_var_array = 'omit'
+empty_var_object = 'omit'
 no_val = 'empty'
 val_flag_empty = '??'
 val_flag_no = '~'
@@ -1735,19 +1735,19 @@ val = './file'
 a = 'b'
 collection = 'object'
 empty = ''
-empty_file = ''
-empty_file_array = ''
-empty_file_key = ''
-empty_file_object = ''
+empty_file = 'omit'
+empty_file_array = 'omit'
+empty_file_key = 'omit'
+empty_file_object = 'omit'
 empty_key = ''
-empty_str = ''
-empty_str_array = ''
-empty_str_key = ''
-empty_str_object = ''
-empty_var = ''
-empty_var_array = ''
-empty_var_key = ''
-empty_var_object = ''
+empty_str = 'omit'
+empty_str_array = 'omit'
+empty_str_key = 'omit'
+empty_str_object = 'omit'
+empty_var = 'omit'
+empty_var_array = 'omit'
+empty_var_key = 'omit'
+empty_var_object = 'omit'
 key = 'tobe?'
 key_flag_empty = '??'
 key_flag_no = '~'
@@ -2160,7 +2160,7 @@ expected: $expected
 
   # array variables can be empty, both via empty arrays and an empty string
   local nothing=() empty=''
-  json @nothing:[]?? @empty:[]?? | equals_json '{nothing: [], empty: []}'
+  json @nothing:[]? @empty:[]? | equals_json '{nothing: [], empty: []}'
 }
 
 @test "json.bash json :: variable-length object values" {
@@ -2250,13 +2250,13 @@ expected: $expected
     | equals_json '{}'
   json ...:number{:json}@<(printf '{"a":1,"b":2}\n{"c":3}') | equals_json '{"a":1,"b":2,"c":3}'
 
-  json ...@<(printf '')? ...@<(printf '\n\n\n') | equals_json '{}'
-  json ...:{:attrs}?@<(printf '') ...:{:attrs}@<(printf '\n\n\n') | equals_json '{}'
+  json ...@<(printf '')?? ...@<(printf '\n\n\n') | equals_json '{}'
+  json ...:{:attrs}??@<(printf '') ...:{:attrs}@<(printf '\n\n\n') | equals_json '{}'
 
   json ...:number@<(printf 'a=1,b=2\nc=3') | equals_json '{"a":1,"b":2,"c":3}'
 
   json.array ...@<(printf '')? ...:?@<(printf '') | equals_json '[]'
-  json.array ...@<(printf '')? ...:?@<(printf '') | equals_json '[]'
+  json.array ...@<(printf '')?? ...:??@<(printf '') | equals_json '[]'
 
   json.array ...:[:json]@<(printf '[]\n[]\n') | equals_json '[]'
   json.array ...:[:json]@<(printf '["a","b"]\n["c"]\n') | equals_json '["a","b","c"]'
@@ -2264,7 +2264,7 @@ expected: $expected
   json.define_defaults num :number
 
   local -A object_entries=()
-  json ...@object_entries? ...:?@object_entries | equals_json '{}'
+  json ...@object_entries?? ...:??@object_entries | equals_json '{}'
 
   object_entries=([foo]=1 [bar]=3)
   json ...@object_entries | compare=parsed equals_json '{"foo":"1","bar":"3"}'
@@ -2275,7 +2275,7 @@ expected: $expected
   json_defaults=num json a=0 ...:{:json}@json_array b=10 | equals_json '{"a":0,"foo":1,"bar":3,"b":10}'
 
   local array_entries=()
-  json.array ...@array_entries? ...:?@array_entries | equals_json '[]'
+  json.array ...@array_entries?? ...:??@array_entries | equals_json '[]'
 
   array_entries=(1 2 3)
   json.array ...@array_entries | equals_json '["1","2","3"]'
@@ -2354,19 +2354,19 @@ expected: $expected
   run json a~@/missing/file
   [[ $status == 1 && $output =~ "The value of argument 'a~@/missing/file' must be non-empty but is empty." ]]
 
-  # ? causes the entry of the key or value it's used with to be omitted if it is
+  # ?? causes the entry of the key or value it's used with to be omitted if it is
   # empty. Also nothing is printed on stderr about the failure to open the file
   # For keys:
-  run json a=1 ~?@missing_var=2 c=3 ~?@/missing/file=4 e=5
+  run json a=1 ~??@missing_var=2 c=3 ~??@/missing/file=4 e=5
   [[ $status == 0 && $output == '{"a":"1","c":"3","e":"5"}' ]]
   # For values:
-  run json a=1 b~?@missing_var c=3 d~?@/missing/file e=5
+  run json a=1 b~??@missing_var c=3 d~??@/missing/file e=5
   [[ $status == 0 && $output == '{"a":"1","c":"3","e":"5"}' ]]
 
-  # ?? causes the entry of the key or value it's used with to be substituted by
+  # ? causes the entry of the key or value it's used with to be substituted by
   # a default value appropriate for the :type
-  json auto:auto??= bool:bool??= false:false??= json:json??= null:null??= \
-    number:number??= raw:raw??= string:string??= true:true??= | equals_json '{
+  json auto:auto?= bool:bool?= false:false?= json:json?= null:null?= \
+    number:number?= raw:raw?= string:string?= true:true?= | equals_json '{
       auto: "", bool: false, false: false, json: null, null: null, number: 0,
       raw: null, string: "", true: true
     }'
@@ -2377,28 +2377,28 @@ expected: $expected
   }'
   empty_args=()
   for type in auto bool false json null number raw string true; do
-    empty_args+=("${type:?}:${type:?}??=")
+    empty_args+=("${type:?}:${type:?}?=")
   done
   json "${empty_args[@]}" | equals_json "${expected_empty:?}"
 
   empty_args=()
   for type in auto bool false json null number raw string true; do
-    empty_args+=("${type:?}:${type:?}??@empty")
+    empty_args+=("${type:?}:${type:?}?@empty")
   done
   echo json "${empty_args[@]@Q}"
   json "${empty_args[@]}" | equals_json "${expected_empty:?}"
 
   local empty_file=$(mktemp_bats) empty_args=()
   for type in auto bool false json null number raw string true; do
-    empty_args+=("${type:?}:${type:?}??@${empty_file:?}")
+    empty_args+=("${type:?}:${type:?}?@${empty_file:?}")
   done
   json "${empty_args[@]}" | equals_json "${expected_empty:?}"
 
   # The flags are shorthands for setting the no_key, no_val and various empty*
   # attributes. These can be set using json.define_defaults.
   # json.define_defaults nonstrict
-  json.define_defaults omit_empty ?:?
-  json.define_defaults default_empty ??:??
+  json.define_defaults omit_empty ??:??
+  json.define_defaults default_empty ?:?
   [[ $(json_defaults=omit_empty    json :=a b c:number= d :) == '{"b":"b","d":"d"}' ]]
   [[ $(json_defaults=default_empty json :=a b c:number= d :) == '{"":"a","b":"b","c":0,"d":"d","":""}' ]]
 }

@@ -793,18 +793,18 @@ function json._parse_argument2() {
   (*'~'*) # ~ results in entries with missing vars/files being empty
     _jpa_out['key_flag_no']='~' \
     _jpa_out['no_key']='empty'         ;;&
-  (*'?'*) # ? results in entries with empty values being omitted
+  (*'?'*) # ? results in entries with empty values using default values for the type
     _jpa_out['key_flag_empty']='?' \
-    _jpa_out['empty_key']='' \
-    _jpa_out['empty_str_key']='omit' \
-    _jpa_out['empty_file_key']='omit' \
-    _jpa_out['empty_var_key']='omit'   ;;&
-  (*'?'*'?'*) # ?? results in entries with empty values using default values for the type
-    _jpa_out['key_flag_empty']='??' \
     _jpa_out['empty_key']='' \
     _jpa_out['empty_str_key']='' \
     _jpa_out['empty_file_key']='' \
     _jpa_out['empty_var_key']=''       ;;&
+  (*'?'*'?'*) # ?? results in entries with empty values being omitted
+    _jpa_out['key_flag_empty']='??' \
+    _jpa_out['empty_key']='' \
+    _jpa_out['empty_str_key']='omit' \
+    _jpa_out['empty_file_key']='omit' \
+    _jpa_out['empty_var_key']='omit'   ;;&
   esac
 
   case "${key_prefix?}${key_value:0:2}" in
@@ -877,20 +877,8 @@ function json._parse_argument2() {
   (*'~'*) # ~ results in entries with missing vars/files being empty
     _jpa_out['val_flag_no']='~' \
     _jpa_out['no_val']='empty'                                               ;;&
-  (*'?'*) # ? results in entries with empty values being omitted
+  (*'?'*) # ? results in entries with empty values using default values for the type
     _jpa_out['val_flag_empty']='?' \
-    _jpa_out['empty']='' \
-    _jpa_out['empty_str']='omit' \
-    _jpa_out['empty_file']='omit' \
-    _jpa_out['empty_var']='omit' \
-    _jpa_out['empty_str_object']='omit' \
-    _jpa_out['empty_file_object']='omit' \
-    _jpa_out['empty_var_object']='omit' \
-    _jpa_out['empty_str_array']='omit' \
-    _jpa_out['empty_file_array']='omit' \
-    _jpa_out['empty_var_array']='omit'                                       ;;&
-  (*'?'*'?'*) # ?? results in entries with empty values using default values for the type
-    _jpa_out['val_flag_empty']='??' \
     _jpa_out['empty']='' \
     _jpa_out['empty_str']='' \
     _jpa_out['empty_file']='' \
@@ -901,6 +889,18 @@ function json._parse_argument2() {
     _jpa_out['empty_str_array']='' \
     _jpa_out['empty_file_array']='' \
     _jpa_out['empty_var_array']=''                                           ;;&
+  (*'?'*'?'*) # ?? results in entries with empty values being omitted
+    _jpa_out['val_flag_empty']='??' \
+    _jpa_out['empty']='' \
+    _jpa_out['empty_str']='omit' \
+    _jpa_out['empty_file']='omit' \
+    _jpa_out['empty_var']='omit' \
+    _jpa_out['empty_str_object']='omit' \
+    _jpa_out['empty_file_object']='omit' \
+    _jpa_out['empty_var_object']='omit' \
+    _jpa_out['empty_str_array']='omit' \
+    _jpa_out['empty_file_array']='omit' \
+    _jpa_out['empty_var_array']='omit'                                       ;;&
   esac
 
   value=${p3: ${#BASH_REMATCH[0]} }
@@ -1213,10 +1213,10 @@ function json._msg_populate_for_value() {
 }
 
 function json._msg_hint_for_empty_key() {
-  _msg['hint']="(Use the '?' flag before the key to omit the entry with an empty key, or the '??' flag to substitute a default value.)"
+  _msg['hint']="(Use the '?' flag before the key to substitute the empty key with a default value, or the '??' flag to omit the entry when it has an empty key.)"
 }
 function json._msg_hint_for_empty_value() {
-  _msg['hint']="(Use the '?' flag after the :type to omit the entry with an empty value, or the '??' flag to substitute a default value.)"
+  _msg['hint']="(Use the '?' flag after the :type to substitute the entry's empty value with a default, or the '??' flag to omit the entry when it has an empty value.)"
 }
 function json._msg_for_encode_error() {
   _msg['error']="json(): Could not encode the ${_msg['arg']:?} as ${_msg['out']:?}. ${_msg['in']:?}${_msg['interpretation']+", "}${_msg['interpretation']:-}.${_msg['hint']+ }${_msg['hint']:-}"
