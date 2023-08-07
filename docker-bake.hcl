@@ -1,6 +1,5 @@
 BATS_GIT_REV = "v1.9.0"
-# Our tesh examples depend on several bug fix PRs I made which are yet to be merged
-TESH_SOURCE = "git+https://github.com/h4l/tesh.git@h4ls-patches"
+TESH_SOURCE = "tesh>=0.3.0,<0.4"
 # Official repo is https://git.savannah.gnu.org/git/bash.git
 JB_BASH_GIT_URL = "https://github.com/bminor/bash.git"
 TAG_BASE = "ghcr.io/h4l/json.bash"
