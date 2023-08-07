@@ -219,15 +219,15 @@ values appropriate for their intended type.
 
 The argument syntax is extended to allow arguments to define optional entries
 without explicitly setting attributes in common cases. Keys and values can be
-preceeded by:
+preceded by:
 
 - `+` to make all empty values errors
 - `~` to have missing or unreadable files/variables treated as empty instead of
   errors
-- `?` to omit entries with an empty value
-- `??` to substitute the empty value for the a default value for its type (which
+- `?` to substitute the empty value for the a default value for its type (which
   may be customised by setting defaults for the `json` call, in the same way as
   the [Default attributes](#default-attributes) are defined)
+- `??` to omit entries with an empty value
 
 For details of the syntax changes, refer to
 [docs/plans/005-revised-syntax.md](./005-revised-syntax.md).
@@ -253,24 +253,24 @@ practice.
   - required-flag `+`:
     `no_key=error,empty_key=error,empty_str_key=error,empty_file_key=error,empty_var_key=error`
   - error-empty-flag `~`: `no_key=empty`
-  - omit-empty-flag `?`:
-    `empty_key=,empty_str_key=omit,empty_file_key=omit,empty_var_key=omit`
-  - sub-empty-flag `??`:
+  - sub-empty-flag `?`:
     `empty_key=,empty_str_key=,empty_file_key=,empty_var_key=`
+  - omit-empty-flag `??`:
+    `empty_key=,empty_str_key=omit,empty_file_key=omit,empty_var_key=omit`
 - `value-flags`:
   - required-flag `+`:
     - `no_val=error,empty=error,empty_str=error,empty_file=error,empty_var=error`
     - `empty_str_object=error,empty_file_object=error,empty_var_object=error`
     - `empty_str_array=error,empty_file_array=error,empty_var_array=error`
   - error-empty-flag `~`: `no_val=empty`
-  - omit-empty-flag `?`:
-    - `empty=,empty_str=omit,empty_file=omit,empty_var=omit`
-    - `empty_str_object=omit,empty_file_object=omit,empty_var_object=omit`
-    - `empty_str_array=omit,empty_file_array=omit,empty_var_array=omit`
-  - sub-empty-flag `??`:
+  - sub-empty-flag `?`:
     - `empty=,empty_str=,empty_file=,empty_var=`
     - `empty_str_object=,empty_file_object=,empty_var_object=`
     - `empty_str_array=,empty_file_array=,empty_var_array=`
+  - omit-empty-flag `??`:
+    - `empty=,empty_str=omit,empty_file=omit,empty_var=omit`
+    - `empty_str_object=omit,empty_file_object=omit,empty_var_object=omit`
+    - `empty_str_array=omit,empty_file_array=omit,empty_var_array=omit`
 
 The effect of `sub-empty-flag` setting the empty attributes to the empty string
 is that resolution will cascade to the default empty values, defined in
@@ -285,16 +285,16 @@ will have an effect if the defaults in effect are to not error.
 ```Console
 $ # Using the syntax revision from docs/plans/005-revised-syntax.md
 
-# @name is empty and omitted due to ?
-$ name= jb id:number=1 @name? other=
+# @name is empty and omitted due to ??
+$ name= jb id:number=1 @name?? other=
 {"id":1,"other":""}
 
-# ? applied to key and value
-$ name= jb id:number=1 ?@name?
+# ?? applied to key and value
+$ name= jb id:number=1 ??@name??
 {"id":1}
 
-# @name is empty and uses the default value of "" due to ??
-$ name= jb id:number=1 @name??
+# @name is empty and uses the default value of "" due to ?
+$ name= jb id:number=1 @name?
 {"id":1,"name":""}
 
 $ # jb-catch does not exist, but works like this
@@ -305,7 +305,7 @@ $ # jb-catch sees the 0x18 Cancel from the initial jb failing, and outputs nothi
 $ jb ok:true=error | jb-catch
 0
 
-$ name="proj_1" jb @name repo_details:json??@<(
+$ name="proj_1" jb @name repo_details:json?@<(
 >   jb url@=<(grep -P '^https://.*$' ./repo.txt) | jb-catch
 > )
 ...
@@ -328,25 +328,25 @@ json(): argument references unbound variable: $prop from '@prop=Example'
 $ jb ~@prop=Example
 json(): argument references empty variable: $prop from '~@prop=Example'
 
-$ jb ~?@prop=Example
+$ jb ~??@prop=Example
 {}
 
-$ jb ~??@prop=Example
+$ jb ~?@prop=Example
 {"":"Example"}
 
 $ jb ~@prop:/empty_key="missing"/=Example
 {"missing":"Example"}
 
-$ value= jb ~??@prop:/empty_string="missing"/@value
-json(): argument references empty variable: $value from '~??@prop:/empty_string="missing"/@=value'
+$ value= jb ~?@prop:/empty_string="missing"/@value
+json(): argument references empty variable: $value from '~?@prop:/empty_string="missing"/@=value'
 
-$ value= jb ~??@prop:/empty_string="missing"/?@value
+$ value= jb ~?@prop:/empty_string="missing"/??@value
 {}
 
-$ value= jb ~??@prop:/empty_string="missing"/??@value
+$ value= jb ~?@prop:/empty_string="missing"/?@value
 {"missing":"missing"}
 
-$ value= jb ~??@prop:/empty_key="nokey",empty="noval"/?@value
+$ value= jb ~?@prop:/empty_key="nokey",empty="noval"/?@value
 {"nokey":"noval"}
 
 # Get non-empty = true using the :true type and false default
