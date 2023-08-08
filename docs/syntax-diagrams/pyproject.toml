@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "syntax-diagrams"
+version = "0.1.0"
+description = "Syntax diagrams for json.bash"
+authors = ["Hal Blackburn <h4l@users.noreply.github.com>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+railroad-diagrams = "^3.0.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

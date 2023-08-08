@@ -1,0 +1,41 @@
+<svg class="railroad-diagram" height="130" viewBox="0 0 188.5 130" width="188.5" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g transform="translate(.5 .5)">
+<g>
+<path d="M20 51v20m0 -10h20" /></g><path d="M40 61h10" /><g>
+<path d="M50 61h0.0" /><path d="M138.5 61h0.0" /><path d="M50.0 61h10" /><g>
+<path d="M60.0 61h0.0" /><path d="M128.5 61h0.0" /><path d="M60.0 61a10 10 0 0 0 10 -10v-10a10 10 0 0 1 10 -10" /><g class="terminal ">
+<path d="M80.0 31h0.0" /><path d="M108.5 31h0.0" /><rect height="22" rx="10" ry="10" width="28.5" x="80" y="20"></rect><text x="94.25" y="35">+</text></g><path d="M108.5 31a10 10 0 0 1 10 10v10a10 10 0 0 0 10 10" /><path d="M60.0 61h20" /><g class="terminal ">
+<path d="M80.0 61h0.0" /><path d="M108.5 61h0.0" /><rect height="22" rx="10" ry="10" width="28.5" x="80" y="50"></rect><text x="94.25" y="65">~</text></g><path d="M108.5 61h20" /><path d="M60.0 61a10 10 0 0 1 10 10v10a10 10 0 0 0 10 10" /><g class="terminal ">
+<path d="M80.0 91h0.0" /><path d="M108.5 91h0.0" /><rect height="22" rx="10" ry="10" width="28.5" x="80" y="80"></rect><text x="94.25" y="95">?</text></g><path d="M108.5 91a10 10 0 0 0 10 -10v-10a10 10 0 0 1 10 -10" /></g><path d="M128.5 61h10" /><path d="M60.0 61a10 10 0 0 0 -10 10v29a10 10 0 0 0 10 10" /><g>
+<path d="M60.0 110h68.5" /></g><path d="M128.5 110a10 10 0 0 0 10 -10v-29a10 10 0 0 0 -10 -10" /></g><path d="M138.5 61h10" /><path d="M 148.5 61 h 20 m 0 -10 v 20"></path></g><style>/* <![CDATA[ */
+	svg.railroad-diagram {
+		background-color:hsl(30,20%,95%);
+	}
+	svg.railroad-diagram path {
+		stroke-width:3;
+		stroke:black;
+		fill:rgba(0,0,0,0);
+	}
+	svg.railroad-diagram text {
+		font:bold 14px monospace;
+		text-anchor:middle;
+	}
+	svg.railroad-diagram text.label{
+		text-anchor:start;
+	}
+	svg.railroad-diagram text.comment{
+		font:italic 12px monospace;
+	}
+	svg.railroad-diagram rect{
+		stroke-width:3;
+		stroke:black;
+		fill:hsl(120,100%,90%);
+	}
+	svg.railroad-diagram rect.group-box {
+		stroke: gray;
+		stroke-dasharray: 10 5;
+		fill: none;
+	}
+
+/* ]]> */
+</style></svg>

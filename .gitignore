@@ -6,3 +6,4 @@
 !.dockerignore
 !.git*
 /build
+docs/syntax-diagrams/*.html
