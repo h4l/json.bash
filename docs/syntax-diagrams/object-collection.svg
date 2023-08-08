@@ -19,34 +19,79 @@
 <path d="M325.0 93h4.25" /><path d="M383.25 93h4.25" /><rect height="22" rx="10" ry="10" width="54" x="329.25" y="82"></rect><text x="356.25" y="97">json</text></g><path d="M387.5 93a10 10 0 0 0 10 -10v-10a10 10 0 0 1 10 -10" /></g><g class="non-terminal ">
 <path d="M305.0 36h0.0" /><path d="M357.0 36h0.0" /><text class="comment" x="331" y="41">format</text></g></g></g><path d="M407.5 63h20" /></g><path d="M427.5 63h10" /><g class="terminal ">
 <path d="M437.5 63h0.0" /><path d="M466.0 63h0.0" /><rect height="22" rx="10" ry="10" width="28.5" x="437.5" y="52"></rect><text x="451.75" y="67">}</text></g></g><path d="M466.0 63h10" /><path d="M 476.0 63 h 20 m 0 -10 v 20"></path></g><style>/* <![CDATA[ */
-	svg.railroad-diagram {
-		background-color:hsl(30,20%,95%);
-	}
-	svg.railroad-diagram path {
-		stroke-width:3;
-		stroke:black;
-		fill:rgba(0,0,0,0);
-	}
-	svg.railroad-diagram text {
-		font:bold 14px monospace;
-		text-anchor:middle;
-	}
-	svg.railroad-diagram text.label{
-		text-anchor:start;
-	}
-	svg.railroad-diagram text.comment{
-		font:italic 12px monospace;
-	}
-	svg.railroad-diagram rect{
-		stroke-width:3;
-		stroke:black;
-		fill:hsl(120,100%,90%);
-	}
-	svg.railroad-diagram rect.group-box {
-		stroke: gray;
-		stroke-dasharray: 10 5;
-		fill: none;
-	}
+:root {
+  --line-colour: rgb(48 48 48);
+  --line-width: 2px;
+  --cell-bg-colour: rgb(227 247 255);
+  --cell-text-colour: rgb(20 20 20);
+  --font-monospace: ui-monospace,SFMono-Regular,SF Mono,Menlo,Consolas,Liberation Mono,monospace;
+  --font-sans: -apple-system,system-ui,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --group-colour: gray;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --line-colour: rgb(173, 186, 199);
+    --cell-bg-colour: rgb(50 67 88);
+    --cell-text-colour: rgb(217 225 235);
+    --group-colour: gray;
+  }
+}
+
+svg.railroad-diagram path {
+  stroke-width: var(--line-width);
+  stroke: var(--line-colour);
+  fill: rgba(0, 0, 0, 0);
+}
+
+svg.railroad-diagram text {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: 14px;
+  text-anchor: middle;
+  white-space: pre;
+  fill: var(--cell-text-colour);
+}
+
+svg.railroad-diagram text.diagram-text {
+  font-size: 12px;
+}
+
+svg.railroad-diagram text.diagram-arrow {
+  font-size: 16px;
+}
+
+svg.railroad-diagram text.label {
+  text-anchor: start;
+}
+
+svg.railroad-diagram g.terminal text {
+  font-family: var(--font-monospace);
+  transform: translate(0px, 0.5px);
+}
+svg.railroad-diagram g.non-terminal text {
+  transform: translate(0px, 1px);
+}
+
+svg.railroad-diagram g.non-terminal text.comment,
+svg.railroad-diagram g.terminal text.comment,
+svg.railroad-diagram text.comment {
+  font-style: italic;
+  font-size: 12px;
+  transform: translate(0px, -2px);
+}
+
+svg.railroad-diagram rect {
+  stroke-width: var(--line-width);
+  stroke: var(--line-colour);
+  fill: var(--cell-bg-colour);
+}
+
+svg.railroad-diagram rect.group-box {
+  stroke: var(--group-colour);
+  stroke-dasharray: 2 4;
+  stroke-width: 1.5px;
+  fill: none;
+}
 
 /* ]]> */
 </style></svg>

@@ -1,3 +1,4 @@
+from __future__ import annotations
 import io
 from pathlib import Path
 
@@ -202,10 +203,12 @@ def approx_arg() -> DiagramItem:
     )
 
 
-def render_diagram(diagram: Diagram, *, standalone: bool = False) -> str:
+def render_diagram(
+    diagram: Diagram, *, standalone: bool = False, css: str | None = None
+) -> str:
     out = io.StringIO()
     if standalone:
-        diagram.writeStandalone(out.write)
+        diagram.writeStandalone(out.write, css=css)
     else:
         diagram.writeSvg(write=out.write)
     return out.getvalue()
@@ -217,6 +220,24 @@ def render_html(diagrams: dict[str, Diagram]) -> str:
         for (name, diagram) in diagrams.items()
     ]
     nl = "\n"
+    style = """
+:root {
+  --body-bg: white;
+  --body-color: black;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --body-bg: rgb(34 39 46);
+    --body-color: rgb(173, 186, 199);
+  }
+}
+
+body {
+  background: var(--body-bg);
+  color: var(--body-color);
+}
+"""
     return f"""\
 <!doctype html>
 <html>
@@ -224,6 +245,7 @@ def render_html(diagrams: dict[str, Diagram]) -> str:
 <head>
   <meta charset="UTF-8">
   <title>Diagram</title>
+  <style>{style}</style>
   <link rel="stylesheet" href="diagram.css">
 </head>
 
@@ -238,6 +260,7 @@ def render_html(diagrams: dict[str, Diagram]) -> str:
 
 
 def main():
+    css = (Path(__file__).parent / "diagram.css").read_text()
     diagrams = {
         "minimal-argument": diagram(minimal_arg()),
         "approximate-argument": diagram(approx_arg()),
@@ -261,7 +284,7 @@ def main():
     Path("diagram.html").write_text(diagram_html)
 
     for name, diag in diagrams.items():
-        Path(f"{name}.svg").write_text(render_diagram(diag, standalone=True))
+        Path(f"{name}.svg").write_text(render_diagram(diag, standalone=True, css=css))
 
 
 if __name__ == "__main__":
