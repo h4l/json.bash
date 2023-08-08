@@ -92,13 +92,15 @@ COPY --from=repo --chmod=755 --chown=root \
   json.bash bin/jb-cat bin/jb-echo bin/jb-stream bin/
 RUN cd bin && for prog in jb jb-array; do ln -s json.bash "${prog:?}"; done
 ARG JSON_BASH_VERSION
-RUN --mount=from=repo,target=/repo <<EOF
+RUN --mount=from=repo,target=/repo <<"EOF"
 JSON_BASH_SOURCE_VERSION=$(. bin/json.bash; echo "${JSON_BASH_VERSION:?}")
 
-# If we're releasing then require that the src and build versions match
-if [[ ${JSON_BASH_VERSION:?} =~ [0-9]+\.[0-9]+\.[0-9] ]]; then
+# If we're releasing a full x.y.z version, require that the src and build
+# versions match. This prevents making a release without updating the source
+# version appropreately.
+if [[ ${JSON_BASH_VERSION:?} =~ ^[0-9]+\.[0-9]+\.[0-9]$ ]]; then
   if [[ ${JSON_BASH_VERSION} != ${JSON_BASH_SOURCE_VERSION:?} ]]; then
-    echo "Error build version does not match source version: ${JSON_BASH_VERSION@A} ${JSON_BASH_SOURCE_VERSION@Q}" >&2
+    echo "Error build version does not match source version: ${JSON_BASH_VERSION@A} ${JSON_BASH_SOURCE_VERSION@A}" >&2
     exit 1
   fi
 fi
