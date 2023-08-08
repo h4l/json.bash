@@ -148,6 +148,7 @@ to find where it is).
 1. [Missing / empty values](#missing--empty-values)
 1. [Nested JSON with `:json` and `:raw` types](#nested-json-with-json-and-raw-types)
 1. [File references](#file-references)
+1. [Argument structure](#argument-structure)
 1. [Error handling](#error-handling)
 1. [Security and correctness](#security-and-correctness)
 1. [`jb-cat`, `jb-echo`, `jb-stream` utility programs](#jb-cat-jb-echo-jb-stream-utility-programs)
@@ -183,6 +184,13 @@ $ # json.array creates arrays, but otherwise works like json
 $ json.array
 []
 ```
+
+Each argument defines an entry in the object or array. Arguments can contain a
+key, type and value in this structure:
+
+![Approximate argument syntax diagram](docs/syntax-diagrams/minimal-argument.svg)
+
+See [Argument structure](#argument-structure) for more details.
 
 ### Object keys
 
@@ -730,6 +738,15 @@ $ people_FILE=<(jb name=Bob; jb name=Alice) \
 > jb @owners:json
 {"owners":{"people":[{"name":"Bob"},{"name":"Alice"}]}}
 ```
+
+### Argument structure
+
+Arguments have 3 main parts: a key, type and value. The structure (omitting some
+details for clarity) is:
+
+![Minimal argument syntax diagram](docs/syntax-diagrams/approximate-argument.svg)
+
+See the [Argument syntax](docs/syntax.md) page for full details.
 
 ### Error handling
 

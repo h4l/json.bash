@@ -7,12 +7,15 @@ from railroad import (
     Diagram,
     Choice,
     Optional,
+    OptionalSequence,
     NonTerminal,
     ZeroOrMore,
     Group,
+    Stack,
     Sequence,
     OneOrMore,
     HorizontalChoice,
+    Skip,
 )
 
 
@@ -156,6 +159,49 @@ def argument() -> DiagramItem:
     )
 
 
+def minimal_arg() -> DiagramItem:
+    """A high-level summary of the argument structure."""
+    return OptionalSequence(
+        NonTerminal("key"),
+        Sequence(":", NonTerminal("type")),
+        Sequence(Choice(0, "=", "@"), NonTerminal("value")),
+    )
+
+
+def approx_arg() -> DiagramItem:
+    """A simplified argument grammar that ignores some details.
+
+    Intended to give a good overview of the argument structure, but aiming to
+    communicate a broad overview, not exact details.
+    """
+    flags = lambda name: Group(
+        OneOrMore(Choice(2, "+", "~", Skip(), "?")), f"{name} flags"
+    )
+    simple_key = Sequence(
+        flags("key"), Choice(1, Group("@", "ref"), Skip(), "="), NonTerminal("key")
+    )
+    simple_meta = Sequence(
+        ":",
+        Group(Choice(1, Skip(), "string", "number", NonTerminal("...")), "type"),
+        Group(
+            Choice(1, Skip(), "[]", "{}", NonTerminal("...")),
+            "collection",
+        ),
+        Group(
+            Optional(Sequence("/", ZeroOrMore(NonTerminal("key=val"), ","), "/")),
+            "attributes",
+        ),
+    )
+    simple_value = Sequence(
+        flags("value"), Choice(1, Group("@", "ref"), "="), NonTerminal("value")
+    )
+    return Stack(
+        Sequence(Group(Optional("..."), "splat"), Optional(simple_key)),
+        Optional(simple_meta),
+        Optional(simple_value),
+    )
+
+
 def render_diagram(diagram: Diagram, *, standalone: bool = False) -> str:
     out = io.StringIO()
     if standalone:
@@ -193,6 +239,8 @@ def render_html(diagrams: dict[str, Diagram]) -> str:
 
 def main():
     diagrams = {
+        "minimal-argument": diagram(minimal_arg()),
+        "approximate-argument": diagram(approx_arg()),
         "flags": diagram(flags()),
         "key-chars": diagram(key_chars()),
         "key": diagram(key()),
