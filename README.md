@@ -190,7 +190,7 @@ key, type and value in this structure:
 
 ![Approximate argument syntax diagram](docs/syntax-diagrams/minimal-argument.svg)
 
-See [Argument structure](#argument-structure) for more details.
+The [Argument structure](#argument-structure) section has more details.
 
 ### Object keys
 

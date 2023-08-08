@@ -1,7 +1,7 @@
 # Argument Syntax
 
-`json.bash`'s arguments define an entries in a JSON object or array. Arguments
-use the syntax described here to define the key and value of their entries, and
+`json.bash`'s arguments define entries in a JSON object or array. Arguments use
+the syntax described here to define the key and value of their entries, and
 metadata on their JSON type (number, bool, etc) and how to handle missing/empty
 files, etc.
 
