@@ -188,7 +188,11 @@ $ json.array
 Each argument defines an entry in the object or array. Arguments can contain a
 key, type and value in this structure:
 
-![Approximate argument syntax diagram](docs/syntax-diagrams/minimal-argument.svg)
+<img
+  width="100%"
+  src="docs/syntax-diagrams/minimal-argument.svg"
+  alt="A railroad syntax diagram showing a high-level summary of the key, type and value structure of an argument."
+  title="Minimal Argument Structure Diagram">
 
 The [Argument structure](#argument-structure) section has more details.
 
@@ -744,9 +748,13 @@ $ people_FILE=<(jb name=Bob; jb name=Alice) \
 Arguments have 3 main parts: a key, type and value. The structure (omitting some
 details for clarity) is:
 
-![Minimal argument syntax diagram](docs/syntax-diagrams/approximate-argument.svg)
+<img
+  width="100%"
+  src="docs/syntax-diagrams/approximate-argument.svg"
+  alt="A railroad syntax diagram showing the key, type and value structure of an argument, in more detail than the minimal argument diagram, but still omitting some details."
+  title="Approximate Argument Structure Diagram">
 
-See the [Argument syntax](docs/syntax.md) page for full details.
+The [Argument syntax](docs/syntax.md) page has more detail.
 
 ### Error handling
 
