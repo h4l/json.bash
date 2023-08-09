@@ -173,11 +173,11 @@ def approx_arg() -> DiagramItem:
     Intended to give a good overview of the argument structure, but aiming to
     communicate a broad overview, not exact details.
     """
-    flags = lambda name: Group(
-        OneOrMore(Choice(2, "+", "~", Skip(), "?")), f"{name} flags"
-    )
+    flags = lambda name: Group(OneOrMore(Choice(1, "+", "~", "?")), f"{name} flags")
     simple_key = Sequence(
-        flags("key"), Choice(1, Group("@", "ref"), Skip(), "="), NonTerminal("key")
+        Optional(flags("key")),
+        Choice(1, Skip(), Group("@", "ref"), "="),
+        Optional(NonTerminal("key")),
     )
     simple_meta = Sequence(
         ":",
@@ -192,12 +192,13 @@ def approx_arg() -> DiagramItem:
         ),
     )
     simple_value = Sequence(
-        flags("value"), Choice(1, Group("@", "ref"), "="), NonTerminal("value")
+        Optional(flags("value")),
+        Optional(Sequence(Choice(0, Group("@", "ref"), "="), NonTerminal("value"))),
     )
     return Stack(
-        Sequence(Group(Optional("..."), "splat"), Optional(simple_key)),
+        Sequence(Group(Optional("..."), "splat"), simple_key),
         Optional(simple_meta),
-        Optional(simple_value),
+        simple_value,
     )
 
 
