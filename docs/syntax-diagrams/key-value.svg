@@ -1,0 +1,95 @@
+<svg class="railroad-diagram" height="154" viewBox="0 0 656.5 154" width="656.5" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g transform="translate(.5 .5)">
+<g>
+<path d="M20 83v20m0 -10h20" /></g><path d="M40 93h10" /><g>
+<path d="M50 93h0.0" /><path d="M606.5 93h0.0" /><g>
+<path d="M50.0 93h0.0" /><path d="M305.5 93h0.0" /><path d="M50.0 93a10 10 0 0 0 10 -10v-18a10 10 0 0 1 10 -10" /><g>
+<path d="M70.0 55h71.25" /><path d="M214.25 55h71.25" /><rect class="group-box" height="38" rx="10" ry="10" width="73" x="141.25" y="36"></rect><g class="terminal ">
+<path d="M141.25 55h22.25" /><path d="M192.0 55h22.25" /><rect height="22" rx="10" ry="10" width="28.5" x="163.5" y="44"></rect><text x="177.75" y="59">@</text></g><g class="non-terminal ">
+<path d="M141.25 28h0.0" /><path d="M214.25 28h0.0" /><text class="comment" x="177.75" y="33">reference</text></g></g><path d="M285.5 55a10 10 0 0 1 10 10v18a10 10 0 0 0 10 10" /><path d="M50.0 93h20" /><g class="non-terminal ">
+<path d="M70.0 93h0.0" /><path d="M285.5 93h0.0" /><rect height="22" width="215.5" x="70" y="82"></rect><text x="177.75" y="97">Any char except .+~?:=@</text></g><path d="M285.5 93h20" /><path d="M50.0 93a10 10 0 0 1 10 10v10a10 10 0 0 0 10 10" /><g class="terminal ">
+<path d="M70.0 123h93.5" /><path d="M192.0 123h93.5" /><rect height="22" rx="10" ry="10" width="28.5" x="163.5" y="112"></rect><text x="177.75" y="127">=</text></g><path d="M285.5 123a10 10 0 0 0 10 -10v-10a10 10 0 0 1 10 -10" /></g><path d="M305.5 93h10" /><g>
+<path d="M315.5 93h0.0" /><path d="M606.5 93h0.0" /><path d="M315.5 93h10" /><g>
+<path d="M325.5 93h0.0" /><path d="M596.5 93h0.0" /><path d="M325.5 93a10 10 0 0 0 10 -10v-19a10 10 0 0 1 10 -10" /><g>
+<path d="M345.5 54h0.0" /><path d="M576.5 54h0.0" /><path d="M345.5 54a10 10 0 0 0 10 -10v0a10 10 0 0 1 10 -10h124.0" /><path d="M432.5 74h124.0a10 10 0 0 0 10 -10v0a10 10 0 0 1 10 -10" /><path d="M345.5 54h10" /><g class="terminal ">
+<path d="M355.5 54h10.0" /><path d="M402.5 54h10.0" /><rect height="22" rx="10" ry="10" width="37" x="365.5" y="43"></rect><text x="384" y="58">::</text></g><path d="M412.5 54a10 10 0 0 1 10 10v0a10 10 0 0 0 10 10" /><path d="M412.5 34a10 10 0 0 1 10 10v0a10 10 0 0 0 10 10" /><g class="terminal ">
+<path d="M432.5 54h10.0" /><path d="M479.5 54h10.0" /><rect height="22" rx="10" ry="10" width="37" x="442.5" y="43"></rect><text x="461" y="58">==</text></g><path d="M489.5 54a10 10 0 0 1 10 10v0a10 10 0 0 0 10 10" /><path d="M489.5 34a10 10 0 0 1 10 10v0a10 10 0 0 0 10 10" /><g class="terminal ">
+<path d="M509.5 54h10.0" /><path d="M556.5 54h10.0" /><rect height="22" rx="10" ry="10" width="37" x="519.5" y="43"></rect><text x="538" y="58">@@</text></g><path d="M566.5 54h10" /></g><path d="M576.5 54a10 10 0 0 1 10 10v19a10 10 0 0 0 10 10" /><path d="M325.5 93h20" /><g class="non-terminal ">
+<path d="M345.5 93h24.75" /><path d="M551.75 93h24.75" /><rect height="22" width="181.5" x="370.25" y="82"></rect><text x="461" y="97">Any char except :=@</text></g><path d="M576.5 93h20" /></g><path d="M596.5 93h10" /><path d="M325.5 93a10 10 0 0 0 -10 10v0a10 10 0 0 0 10 10" /><g>
+<path d="M325.5 113h271.0" /></g><path d="M596.5 113a10 10 0 0 0 10 -10v0a10 10 0 0 0 -10 -10" /></g></g><path d="M606.5 93h10" /><path d="M 616.5 93 h 20 m 0 -10 v 20"></path></g><style>/* <![CDATA[ */
+:root {
+  --line-colour: rgb(48 48 48);
+  --line-width: 2px;
+  --cell-bg-colour: rgb(227 247 255);
+  --cell-text-colour: rgb(20 20 20);
+  --font-monospace: ui-monospace,SFMono-Regular,SF Mono,Menlo,Consolas,Liberation Mono,monospace;
+  --font-sans: -apple-system,system-ui,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --group-colour: gray;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --line-colour: rgb(173, 186, 199);
+    --cell-bg-colour: rgb(50 67 88);
+    --cell-text-colour: rgb(217 225 235);
+    --group-colour: gray;
+  }
+}
+
+svg.railroad-diagram path {
+  stroke-width: var(--line-width);
+  stroke: var(--line-colour);
+  fill: rgba(0, 0, 0, 0);
+}
+
+svg.railroad-diagram text {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: 14px;
+  text-anchor: middle;
+  white-space: pre;
+  fill: var(--cell-text-colour);
+}
+
+svg.railroad-diagram text.diagram-text {
+  font-size: 12px;
+}
+
+svg.railroad-diagram text.diagram-arrow {
+  font-size: 16px;
+}
+
+svg.railroad-diagram text.label {
+  text-anchor: start;
+}
+
+svg.railroad-diagram g.terminal text {
+  font-family: var(--font-monospace);
+  transform: translate(0px, 0.5px);
+}
+svg.railroad-diagram g.non-terminal text {
+  transform: translate(0px, 1px);
+}
+
+svg.railroad-diagram g.non-terminal text.comment,
+svg.railroad-diagram g.terminal text.comment,
+svg.railroad-diagram text.comment {
+  font-style: italic;
+  font-size: 12px;
+  transform: translate(0px, -2px);
+}
+
+svg.railroad-diagram rect {
+  stroke-width: var(--line-width);
+  stroke: var(--line-colour);
+  fill: var(--cell-bg-colour);
+}
+
+svg.railroad-diagram rect.group-box {
+  stroke: var(--group-colour);
+  stroke-dasharray: 2 4;
+  stroke-width: 1.5px;
+  fill: none;
+}
+
+/* ]]> */
+</style></svg>

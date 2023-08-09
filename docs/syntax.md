@@ -18,19 +18,19 @@ that are merged into the host object or array.
 Keys can be prefixed with [Flags](#flags) to control their behaviour when
 missing/empty.
 
+![argument diagram](syntax-diagrams/key.svg)
+
+### `key-value`
+
 Keys starting with `@` are references to variables or files. (File references
 start with `/` or `./`, otherwise they're variables). Otherwise, the key's value
 is a literal string. Values that use flag characters need to start with an `=`.
-
-![argument diagram](syntax-diagrams/key.svg)
-
-### `key-chars`
 
 The main value of a key can be any character, except `:` which starts a
 [`meta`](#meta) section, and `@` or `=` which start a [`value`](#value). To
 include these characters in keys, they must be escaped by doubling them.
 
-![argument diagram](syntax-diagrams/key-chars.svg)
+![argument diagram](syntax-diagrams/key-value.svg)
 
 ### `no-metadata-key`
 

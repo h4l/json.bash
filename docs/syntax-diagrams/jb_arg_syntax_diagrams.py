@@ -48,30 +48,27 @@ def key_chars():
     return OneOrMore(Choice(1, key_escape(), key_char))
 
 
-def key() -> DiagramItem:
+def key_value() -> DiagramItem:
     start_of_bare_key = NonTerminal("Any char except .+~?:=@")
     start_of_ref = Group(Terminal("@"), "reference")
     start_of_key = Choice(1, start_of_ref, start_of_bare_key, Terminal("="))
 
-    return Sequence(
-        Optional(NonTerminal("flags")), start_of_key, Optional(NonTerminal("key-chars"))
-    )
+    return Sequence(start_of_key, key_chars())
 
 
-def ref_key() -> DiagramItem:
-    return Sequence(Terminal("@"), NonTerminal("key-chars"))
-
-
-def string_key() -> DiagramItem:
-    start_of_bare_key = NonTerminal("Any char except .+~?:=@")
-    start_of_str = Choice(0, start_of_bare_key, Terminal("="))
-    return Sequence(start_of_str, NonTerminal("key-chars"))
+def key() -> DiagramItem:
+    return Sequence(Optional(NonTerminal("flags")), Optional(NonTerminal("key-value")))
 
 
 def no_metadata_key() -> DiagramItem:
     not_flag_or_start_char = NonTerminal("Any char except +~?:=@")
     non_flag_key_char = Choice(1, key_escape(), not_flag_or_start_char)
-    return Sequence(NonTerminal("key"), non_flag_key_char)
+    # return Sequence(NonTerminal("key-value"), non_flag_key_char)
+
+    return Sequence(
+        Optional(NonTerminal("flags")),
+        Choice(0, Sequence(NonTerminal("key-value"), non_flag_key_char), Skip()),
+    )
 
 
 # Meta
@@ -149,13 +146,14 @@ def value() -> DiagramItem:
 
 def argument() -> DiagramItem:
     key_and_meta = Choice(
-        0,
-        Sequence(NonTerminal("key"), NonTerminal("metadata")),
+        1,
+        Skip(),
+        Sequence(Optional(NonTerminal("key")), NonTerminal("metadata")),
         NonTerminal("no-metadata-key"),
     )
     return Sequence(
         Optional(Group("...", "splat")),
-        Optional(key_and_meta),
+        key_and_meta,
         Optional(NonTerminal("value")),
     )
 
@@ -265,7 +263,7 @@ def main():
         "minimal-argument": diagram(minimal_arg()),
         "approximate-argument": diagram(approx_arg()),
         "flags": diagram(flags()),
-        "key-chars": diagram(key_chars()),
+        "key-value": diagram(key_value()),
         "key": diagram(key()),
         "no-metadata-key": diagram(no_metadata_key()),
         "object-collection": diagram(object_collection()),
