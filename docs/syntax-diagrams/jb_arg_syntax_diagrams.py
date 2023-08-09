@@ -160,10 +160,10 @@ def argument() -> DiagramItem:
 
 def minimal_arg() -> DiagramItem:
     """A high-level summary of the argument structure."""
-    return OptionalSequence(
-        NonTerminal("key"),
-        Sequence(":", NonTerminal("type")),
-        Sequence(Choice(0, "=", "@"), NonTerminal("value")),
+    return Sequence(
+        Optional(NonTerminal("key")),
+        Choice(0, Sequence(":", Optional(NonTerminal("type"))), Skip()),
+        Optional(Sequence(Choice(0, "=", "@"), NonTerminal("value"))),
     )
 
 
