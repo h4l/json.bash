@@ -124,7 +124,7 @@ source json.bash; alias jb=json jb-array=json.array
 
 # Optional: if you'd also like jb-echo, jb-cat, jb-stream
 for name in jb-echo jb-cat jb-stream; do
-  curl -fsSL -O "https://raw.githubusercontent.com/h4l/json.bash/HEAD/${name:?}"
+  curl -fsSL -O "https://raw.githubusercontent.com/h4l/json.bash/HEAD/bin/${name:?}"
   chmod +x "${name:?}"
 done
 ```
