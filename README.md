@@ -785,7 +785,7 @@ json(): Could not encode the value of argument 'data:json=invalid' as a 'json' v
 ␘
 status=1
 
-$ # Errors in developer-provided arguments fail with status 1
+$ # Errors in developer-provided arguments fail with status 2
 $ jb bad_arg:cheese; echo status=$?
 json.parse_argument(): type name must be one of auto, bool, false, json, null, number, raw, string or true, but was 'cheese'
 json(): Could not parse argument 'bad_arg:cheese'. Argument is not structured correctly, see --help for examples.
@@ -1073,7 +1073,7 @@ certainly wouldn't have written it in bash if I'd known how large it'd become.
   here — it would not be at all practical to maintain these kind of examples
   without it. With tesh the examples become a beneficial second layer of tests,
   rather than a maintenance burdon.
-- [jq] for making it pleasant to use with JSON on the command-line and in shell
+- [jq] for making it pleasant to use JSON on the command-line and in shell
   scripts
 
 [tesh]: https://github.com/OceanSprint/tesh
