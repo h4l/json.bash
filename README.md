@@ -84,9 +84,15 @@ bash-5.2# jb os-release:{}@<(xargs < /etc/os-release env -i)
 
 ### OS Packages
 
-Package-manager files are available for any package manager supported by
-[`fpm`][fpm] (at least apk, deb, freebsd, rpm, sh (self extracting), tar,
-possibly more).
+<details>
+<summary>Expand this for details…</summary>
+
+#### Auto-generated packages
+
+[Externally-maintained packages](#externally-maintained-packages) are not yet
+widely available, so we provide a way to generate a package file for any package
+manager supported by [`fpm`][fpm] (at least apk, deb, freebsd, rpm, sh (self
+extracting), tar, possibly more).
 
 We publish the container image
 [`ghcr.io/h4l/json.bash/pkg`](https://github.com/h4l/json.bash/pkgs/container/json.bash%2Fpkg)
@@ -103,12 +109,29 @@ $ dpkg -i /pkg/json.bash_0.2.2-dev.deb
 
 [fpm]: https://fpm.readthedocs.io/
 
+#### Externally-maintained packages
+
+These packages have been created and maintained by downstream users/projects.
+
+| OS         | Repository                                                               | Details                                          |
+| ---------- | ------------------------------------------------------------------------ | ------------------------------------------------ |
+| Arch linux | [User Repository](https://wiki.archlinux.org/title/Arch_User_Repository) | https://aur.archlinux.org/packages/json-bash-git |
+
+> ##### json.bash needs you!
+>
+> If you'd like `json.bash` to be available from your operating system's package
+> manager, you can help by investigating your package manager's process for
+> adding new packages to see if you can contribute a package, or make a request
+> to add it.
+
+</details>
+
 ### Manual install
 
 Installing manually is quite straightforward.
 
 <details>
-  <summary>Expand this for instructions</summary>
+  <summary>Expand this for instructions…</summary>
 
 ```bash
 # Alternatively, use /usr/local/bin to install system-wide
