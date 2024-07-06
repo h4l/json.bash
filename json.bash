@@ -1646,7 +1646,7 @@ Examples:
   $ source json.bash
   $ out=compilerOptions json removeComments:true
   $ files=(a.ts b.ts)
-  $ json @compilerOptions:raw @files:string[]
+  $ json @compilerOptions:json @files:string[]
   {"compilerOptions":{"removeComments":true},"files":["a.ts","b.ts"]}
 
 Options:
