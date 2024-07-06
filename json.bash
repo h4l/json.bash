@@ -8,7 +8,7 @@ declare -g -A _json_defaults=()
 
 if shopt -q patsub_replacement 2>/dev/null; then declare -g _json_bash_feat_patsub=true; fi
 
-# Generated in hack/argument_pattern.bash
+# Generated in hack/syntax_patterns.bash
 _json_bash_005_p1_key=$'^(\\.*)(($|:)|([+~?]*)([^.+~?:]((::|==|@@)|[^:=@])*)?)'
 _json_bash_005_p2_meta=$'^:([a-zA-Z0-9]+)?([{[](.?)(:[a-zA-Z0-9_]+)?[]}])?(/((//|,,|==)|[^/])*/)?'
 _json_bash_005_p3_value=$'^([+~?]*)([@=]?)'
