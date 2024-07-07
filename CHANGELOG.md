@@ -8,6 +8,17 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Changed
+
+- Fixed broken link in README's manual install instructions
+  (https://github.com/h4l/json.bash/pull/8)
+- Added external packages list to the README
+  (https://github.com/h4l/json.bash/pull/9)
+  - We now have a package in the Arch User Repo thanks to
+    [kseistrup](https://aur.archlinux.org/account/kseistrup)
+- `--help` text uses `:json` instead of `:raw` in one of the examples
+  (https://github.com/h4l/json.bash/pull/9)
+
 ## [0.2.2] — 2023-08-07
 
 No functional changes, `0.2.1` wasn't published because of a cherry-picking
