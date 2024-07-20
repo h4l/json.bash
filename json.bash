@@ -401,7 +401,7 @@ function json.get_entry_encode_fn() {
 function json.start_json_validator() {
   if [[ ${_json_validator_pids[$$]:-} != "" ]]; then return 0; fi
 
-  local array validation_request
+  local validation_request
   # This is a PCRE regex that matches JSON. This is possible because we use
   # PCRE's recursive patterns to match JSON's nested constructs. And also
   # possessive repetition quantifiers to prevent expensive backtracking on match
