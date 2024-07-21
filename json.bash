@@ -432,14 +432,20 @@ function json.start_json_validator() {
     { exec {saved_fds[i]}<&"$(( 63 - i ))"; } 2>/dev/null || break
   done
 
-  { coproc json_validator ( LC_ALL=C.UTF-8 grep --only-matching --line-buffered \
-    -P -e "${validation_request:?}" )
-  } 2>/dev/null  # hide interactive job control PID output
-  _json_validator_pids[$$]=${json_validator_PID:?}
+  # This is a separate function so that we can mock it when testing.
+  json._start_grep_coproc
+
   # restore FDs bash closed...
   for ((i=0; i < ${#saved_fds[@]}; ++i)); do
     eval "exec $(( 63 - i ))<&${saved_fds[i]:?} {saved_fds[i]}<&-"
   done
+
+  # json_validator and json_validator_PID are set automatically by coproc. If
+  # the coproc dies, bash unsets these vars immediately, so they must be treated
+  # like accessing mutable data that can be set by another thread.
+  # Real example: https://github.com/h4l/json.bash/issues/10
+  _json_validator_pids[$$]=${json_validator_PID:-}
+
   # Bash only allows 1 coproc per bash process, so by creating a coproc we would
   # normally prevent another things in this process from creating one. We can
   # avoid this restriction by duplicating the coproc's pipe FDs to new ones, and
@@ -448,8 +454,32 @@ function json.start_json_validator() {
   # prevent forked shells using this process's coprocess, we store the new FDs
   # in an array indexed by PID, so we only use FDs owned by our process.
   # shellcheck disable=SC1083,SC2102
-  exec {_json_validator_out_fds[$$]}<&"${json_validator[0]}"- \
-       {_json_validator_in_fds[$$]}>&"${json_validator[1]}"-
+
+  # $json_validator can be unset here. (Even if we were to copy & validate the
+  # values, the FDs can be closed by the time we try to open them here, so we
+  # just try, and interpret failure as the coproc being dead - so unset the PID.
+  { exec {_json_validator_out_fds[$$]}<&"${json_validator[0]:-}"- \
+       {_json_validator_in_fds[$$]}>&"${json_validator[1]:-}"- ;
+  } 2>/dev/null || _json_validator_pids[$$]=
+
+  if [[ ! ${_json_validator_pids[$$]:-} ]]; then
+    msg_context="json validator 'grep' process failed to start" \
+      json._notify_coproc_terminated
+    return 2
+  fi
+}
+
+function json._start_grep_coproc() {
+  { coproc json_validator ( LC_ALL=C.UTF-8 grep --only-matching --line-buffered \
+    -P -e "${validation_request:?}" )
+  } 2>/dev/null  # hide interactive job control PID output
+}
+
+function json._notify_coproc_terminated() {
+  echo "json.bash: ${msg_context:?}:" \
+    "'grep' must support GNU grep options (-P --only-matching" \
+    "--line-buffered). Use the :raw type instead of :json to avoid starting a" \
+    "JSON validator grep process. " >&2
 }
 
 function json.check_json_validator_running() {
@@ -461,13 +491,37 @@ function json.check_json_validator_running() {
   return 0 # alive or not expected to be alive
 }
 
+function json._reset_json_validator() {
+  if [[ ${_json_validator_pids[$$]:-} != "" ]]; then
+    kill "${_json_validator_pids[$$]:-}" 2>/dev/null
+    unset "_json_validator_pids[$$]"
+  fi
+}
+
 function json.validate() {
-  if [[ ${_json_validator_pids[$$]:-} == "" ]];
-  then json.start_json_validator; fi
+  if [[ ${_json_validator_pids[$$]:-} == "" ]]; then
+    json.start_json_validator || return 2
+  fi
 
-  local _jv_type=${_json_bash_validation_types[${type:-json}]:?"json.validate: unsupported \$type: ${type@Q}"}
+  local _jv_type=${_json_bash_validation_types[${type:-json}]:?"json.validate: unsupported \$type: ${type@Q}"} \
+    _jv_write_error='' _jv_response=''
 
-  let "_json_validate_id=${_json_validate_id:-0}+1"; local id=$_json_validate_id
+  let "_json_validate_id=${_json_validate_id:-0}+1"; local _jv_id=$_json_validate_id
+
+  # When we write to stdin file descriptor of our grep coproc (from
+  # _json_validator_in_fds), we'll get SIGPIPE if the process has terminated.
+  # Default bash behaviour is to exit with 141. (e.g. this would happen when
+  # writing to stdout that's connected to a `head` command that's received
+  # enough input.) However this would stop us handling the coproc's unexpected
+  # termination. This situation does not warrant exiting, as writing to the
+  # coproc is not the primary purpose of this process.
+  #
+  # We don't set a SIGPIPE trap globally because if we do, any SIGPIPE error
+  # would result in bash printing a message to stdout indicating an IO error.
+  # We also don't attempt to restore a potential existing trap, because
+  # detecting existing traps is too slow to make sense to do every call.
+  trap '' SIGPIPE
+
   local count_markers IFS # delimit JSON with Record Separator
   # Ideally we'd use null-terminated "lines" with grep's --null-data, but I can't
   # get consistent reads after writes that way. (The problem appears to be with
@@ -481,34 +535,43 @@ function json.validate() {
     if [[ ${#_validate_json_in[@]} == 0 ]]; then return 0; fi
     printf -v count_markers ':%.0s' "${!_validate_json_in[@]}"
     {
-      printf '%d%s' "${id:?}" "${count_markers:?}"
+      printf '%d%s' "${_jv_id:?}" "${count_markers:?}"
       # \n is the end of a validation request, so we need to remove \n in JSON
       # input. We map them to \r, which don't JSON affect validity.
       printf "\x1E${_jv_type:?}%s" "${_validate_json_in[@]//$'\n'/$'\r'}"
       printf '\n'
-    } >&"${_json_validator_in_fds[$$]:?}"
+    } >&"${_json_validator_in_fds[$$]:?}" 2>/dev/null || _jv_write_error=true
   else
     IFS=''; count_markers=${*/*/:}
     {
-      printf '%d%s' "${id:?}" "${count_markers?}"
+      printf '%d%s' "${_jv_id:?}" "${count_markers?}"
       printf "\x1E${_jv_type:?}%s" "${@//$'\n'/$'\r'}"
       printf '\n'
-    } >&"${_json_validator_in_fds[$$]:?}"
+    } >&"${_json_validator_in_fds[$$]:?}" 2>/dev/null || _jv_write_error=true
   fi
+  trap - SIGPIPE  # restore default SIGPIPE behaviour
 
   IFS=''
-  if ! read -ru "${_json_validator_out_fds[$$]:?}" -t 4 response; then
+  if [[ ${_jv_write_error:-} ]] || ! read -ru "${_json_validator_out_fds[$$]:?}" -t 4 _jv_response; then
     if ! json.check_json_validator_running; then
-      echo "json.bash: json validator coprocess unexpectedly died" >&2
+      msg_context="json validator coprocess unexpectedly died" \
+        json._notify_coproc_terminated
       return 2
     fi
-    echo "json.validate: failed to read json validator response: $? ${response@Q}" >&2
+    # After an IO error the validator stream will be in an unknown state, so we
+    # can't keep using it.
+    json._reset_json_validator
+    if [[ ${_jv_write_error:-} ]]; then
+      echo "json.validate: failed to write json validator request: ${_jv_id:?}" >&2
+    else
+      echo "json.validate: failed to read json validator response: ${_jv_id:?}" >&2
+    fi
     return 2
   fi
-  if [[ $response != "${id:?}${count_markers?}" ]]; then
-    if [[ $response != "${id:?}"* ]]; then
-      echo "json.validate: mismatched validator response ID: ${id@A}," \
-        "${response@A}" >&2; return 2
+  if [[ ${_jv_response?} != "${_jv_id:?}${count_markers?}" ]]; then
+    if [[ ${_jv_response?} != "${_jv_id:?}"* ]]; then
+      echo "json.validate: mismatched validator response ID: ${_jv_id@A}," \
+        "${_jv_response@A}" >&2; return 2
     fi
     return 1
   fi

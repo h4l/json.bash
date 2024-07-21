@@ -2842,6 +2842,128 @@ json(): Could not encode the value of argument 'a:number=oops' as a 'number' val
   [[ $status == 0 && $output == '["foo","bar"]' ]]
 }
 
+@test "json validator :: reports validator grep process failing to start :: PID & FDs unset" {
+  # Because it's a parallel process, the coproc failure behaviour is timing
+  # dependent, making it difficult to test specific scenarios without mocking.
+  # So we mock the function that starts the coproc to simulate particular error
+  # conditions that it can exhibit in practice.
+  function json._start_grep_coproc() {
+    true
+  }
+
+  run --separate-stderr json.validate '42'
+  [[ $status == 2 && $output == "" ]]
+  echo "$stderr"
+  [[ $stderr == *"json.bash: json validator 'grep' process failed to start: 'grep' must support GNU grep options (-P --only-matching --line-buffered). Use the :raw type instead of :json to avoid starting a JSON validator grep process."* ]]
+}
+
+@test "json validator :: reports validator grep process failing to start :: PID set, FDs unset" {
+  function json._start_grep_coproc() {
+    json_validator_PID=9999
+    # json_validator (FDs) var not set
+  }
+
+  run --separate-stderr json.validate '42'
+  [[ $status == 2 && $output == "" ]]
+  echo "$stderr"
+  [[ $stderr == *"json.bash: json validator 'grep' process failed to start: 'grep' must support GNU grep options (-P --only-matching --line-buffered). Use the :raw type instead of :json to avoid starting a JSON validator grep process."* ]]
+}
+
+@test "json validator :: reports validator grep process failing to start :: PID unset, FDs set" {
+  function json._start_grep_coproc() {
+    json_validator=(9000 9001)
+    # json_validator_PID var not set
+  }
+
+  run --separate-stderr json.validate '42'
+  [[ $status == 2 && $output == "" ]]
+  echo "$stderr"
+  [[ $stderr == "json.bash: json validator 'grep' process failed to start: 'grep' must support GNU grep options (-P --only-matching --line-buffered). Use the :raw type instead of :json to avoid starting a JSON validator grep process." ]]
+}
+
+@test "json validator :: reports validator grep process failing after start" {
+  function kill_coproc_then_validate() {
+    json.validate '1' 2>&1
+    kill "${_json_validator_pids[$$]:?}" || true
+    wait "${_json_validator_pids[$$]:?}" || [[ $? == 143 ]] # expect SIGTERM
+
+    # Should fail when writing the validation request to the coproc
+    validate_status=0
+    json.validate '2' || validate_status=$?
+    [[ $validate_status == 2 ]]  # should fail
+
+    # validator should be reset, and succeed now
+    json.validate '3' 2>&1
+  }
+
+  run --separate-stderr kill_coproc_then_validate
+  echo "$status"
+  echo "${stderr@Q}"
+  [[ $status == 0 && $output == "" ]]
+  [[ $stderr == "json.bash: json validator coprocess unexpectedly died: 'grep' must support GNU grep options (-P --only-matching --line-buffered). Use the :raw type instead of :json to avoid starting a JSON validator grep process." ]]
+}
+
+@test "json validator :: reports validator grep process IO write error" {
+  function kill_coproc_then_validate() {
+    json.validate '1' 2>&1 # start the coproc
+
+    # simulate a write error
+    fifo=$(mktemp_bats); rm "${fifo:?}"
+    mkfifo "${fifo:?}"
+    cat < "${fifo:?}" &
+    exec {fifo_in_fd}>"${fifo:?}" # open the write end of fifo
+    # Break the pipe by killing the reader. Writing to fifo_in_fd will now error
+    # with SIGPIPE.
+    kill $! || true; wait $! || true
+
+    # using the validator will now write to the broken fifo
+    _json_validator_in_fds[$$]=${fifo_in_fd}
+
+    validate_status=0
+    json.validate '2' || validate_status=$?
+    [[ $validate_status == 2 ]]  # should fail
+
+    # validator should be reset, and succeed now
+    json.validate '3' 2>&1
+  }
+
+  run --separate-stderr kill_coproc_then_validate
+  echo "$status"
+  echo "${stderr@Q}"
+  [[ $status == 0 && $output == "" ]]
+  [[ $stderr == "json.validate: failed to write json validator request: 2" ]]
+}
+
+@test "json validator :: reports validator grep process IO read error" {
+  function kill_coproc_then_validate() {
+    json.validate '1' 2>&1 # start the coproc
+
+    # simulate a read error
+    fifo=$(mktemp_bats); rm "${fifo:?}"
+    mkfifo "${fifo:?}"
+    sleep infinity > "${fifo:?}" &
+    exec {fifo_out_fd}<"${fifo:?}" # open the read end of fifo
+    # Break the pipe by killing the writer
+    kill $! || true; wait $! || true
+
+    # using the validator will now read the broken fifo
+    _json_validator_out_fds[$$]=${fifo_out_fd}
+
+    validate_status=0
+    json.validate '2' || validate_status=$?
+    [[ $validate_status == 2 ]]  # should fail
+
+    # validator should be reset, and succeed now
+    json.validate '3' 2>&1
+  }
+
+  run --separate-stderr kill_coproc_then_validate
+  echo "$status"
+  echo "${stderr@Q}"
+  [[ $status == 0 && $output == "" ]]
+  [[ $stderr == "json.validate: failed to read json validator response: 2" ]]
+}
+
 @test "json validator :: validates valid JSON via arg" {
   initials=('' 'true' '{}' '[]' '42' '"hi"' 'null')
   for initial in "${initials[@]}"; do
