@@ -433,7 +433,7 @@ function json.start_json_validator() {
   done
 
   { coproc json_validator ( LC_ALL=C.UTF-8 grep --only-matching --line-buffered \
-    -P -e "${validation_request//[$' \n']/}" )
+    -P -e "${validation_request:?}" )
   } 2>/dev/null  # hide interactive job control PID output
   _json_validator_pids[$$]=${json_validator_PID:?}
   # restore FDs bash closed...
