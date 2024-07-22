@@ -8,6 +8,35 @@ and this project adheres to
 
 ## [Unreleased]
 
+### BREAKING CHANGES
+
+> [!NOTE]
+>
+> `json.bash` is version `0.x`, so the major version is not incremented.
+
+- The `json.validate` function now sets and clears a bash trap for `SIGPIPE`
+  when called. If something else in a bash script is also setting a trap for
+  `SIGPIPE`, the trap will be cleared after validating JSON. (It's not practical
+  to detect and restore existing `SIGPIPE` traps due to the performance cost of
+  doing so.) ([#15](https://github.com/h4l/json.bash/pull/15))
+
+### Fixed
+
+- The JSON validation co-process exiting at startup could cause bash to exit
+  with an unbound variable error, due to the special coproc `_PID` var not being
+  set. Interaction with the validator co-process is now more robust to errors
+  that can occur when it exits unexpectedly. For example, if the grep command is
+  not compatible with the GNU grep flags we use.
+  ([#15](https://github.com/h4l/json.bash/pull/15))
+
+### Added
+
+- The `JSON_BASH_GREP` environment variable can be set to a `:` delimited list
+  of commands to use when starting the grep JSON validator co-process. It
+  defaults to `ggrep:grep`, so systems with `ggrep` will use it first. (GNU grep
+  is commonly `ggrep` when `grep` is not GNU grep.)
+  ([#15](https://github.com/h4l/json.bash/pull/15))
+
 ### Changed
 
 - Fixed broken link in README's manual install instructions
