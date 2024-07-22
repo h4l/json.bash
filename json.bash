@@ -463,23 +463,45 @@ function json.start_json_validator() {
   } 2>/dev/null || _json_validator_pids[$$]=
 
   if [[ ! ${_json_validator_pids[$$]:-} ]]; then
-    msg_context="json validator 'grep' process failed to start" \
+    msg_context="json validator co-process failed to start" \
       json._notify_coproc_terminated
     return 2
   fi
 }
 
 function json._start_grep_coproc() {
-  { coproc json_validator ( LC_ALL=C.UTF-8 grep --only-matching --line-buffered \
+  local grep
+  out=grep json._resolve_grep
+
+  { coproc json_validator ( LC_ALL=C.UTF-8 "${grep:?}" --only-matching --line-buffered \
     -P -e "${validation_request:?}" )
   } 2>/dev/null  # hide interactive job control PID output
 }
 
+function json._resolve_grep() {
+  local -n _jrg_out=${out:?'json._resolve_grep: $out must be set to receive the grep path'}
+  local IFS=':'
+  # shellcheck disable=SC2206
+  local _jrg_grep_options=(${JSON_BASH_GREP:-ggrep:grep})
+  for option in "${_jrg_grep_options[@]}"; do
+    if type -t -- "${option?}" > /dev/null; then
+      _jrg_out=${option?}
+      return 0
+    fi
+  done
+  # default to the final option even if it failed to resolve
+  _jrg_out=${option:-grep}
+}
+
 function json._notify_coproc_terminated() {
+  local grep
+  out=grep json._resolve_grep
+
   echo "json.bash: ${msg_context:?}:" \
-    "'grep' must support GNU grep options (-P --only-matching" \
-    "--line-buffered). Use the :raw type instead of :json to avoid starting a" \
-    "JSON validator grep process. " >&2
+    "${grep@Q} must support GNU grep options (-P --only-matching" \
+    "--line-buffered). Set JSON_BASH_GREP to a GNU grep executable, or use" \
+    "the :raw type instead of :json to avoid starting a JSON validator grep" \
+    "process." >&2
 }
 
 function json.check_json_validator_running() {
@@ -554,7 +576,7 @@ function json.validate() {
   IFS=''
   if [[ ${_jv_write_error:-} ]] || ! read -ru "${_json_validator_out_fds[$$]:?}" -t 4 _jv_response; then
     if ! json.check_json_validator_running; then
-      msg_context="json validator coprocess unexpectedly died" \
+      msg_context="json validator co-process unexpectedly died" \
         json._notify_coproc_terminated
       return 2
     fi

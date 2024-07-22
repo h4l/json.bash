@@ -11,6 +11,9 @@ if [[ ${CI:-false} == true ]]; then
   TIMEOUT_SECONDS=60
 fi
 
+# Always use grep, otherwise errors will be different on systems with ggrep.
+export JSON_BASH_GREP=grep
+
 setup() {
   cd "${BATS_TEST_DIRNAME:?}"
 }
@@ -2842,6 +2845,61 @@ json(): Could not encode the value of argument 'a:number=oops' as a 'number' val
   [[ $status == 0 && $output == '["foo","bar"]' ]]
 }
 
+@test "json validator :: resolves grep executable via JSON_BASH_GREP :: defaulting to ggrep then grep" {
+  msg_file=$(mktemp_bats)
+
+  function validate_with_ggrep() {
+    unset JSON_BASH_GREP
+    function ggrep() {
+      echo "ggrep" > "${msg_file:?}"
+      command -p grep "$@"
+    }
+    function grep() {
+      echo "grep" > "${msg_file:?}"
+      command -p grep "$@"
+    }
+
+    # ggrep is defined so it's used by default
+    json.validate '42'
+    [[ $(<"${msg_file?}") == 'ggrep' ]]
+
+    # when ggrep isn't defined, grep is used
+    json._reset_json_validator
+    unset ggrep
+    json.validate '42'
+    [[ $(<"${msg_file?}") == 'grep' ]]
+  }
+
+  # unset PATH to avoid finding ggrep on the system running this test
+  PATH= run validate_with_ggrep
+  [[ $status == 0 && $output == "" ]]
+}
+
+@test "json validator :: resolves grep executable via JSON_BASH_GREP :: uses first defined command after splitting by : or the final undefined entry" {
+  msg_file=$(mktemp_bats)
+
+  function validate_with_ggrep() {
+    JSON_BASH_GREP=missing_grep1:custom_grep:missing_grep2
+    function custom_grep() {
+      echo "custom_grep" > "${msg_file:?}"
+      command -p grep "$@"
+    }
+
+    # custom_grep is defined so it's used
+    json.validate '42'
+    [[ $(<"${msg_file?}") == 'custom_grep' ]]
+
+    # when none of the options are available, the final choice is used (and fails)
+    json._reset_json_validator
+    unset custom_grep
+    json.validate '42' || [[ $? == 2 ]]
+  }
+
+  # unset PATH to avoid finding ggrep on the system running this test
+  PATH= run validate_with_ggrep
+  [[ $status == 0 && $output == "json.bash: json validator co-process unexpectedly died: 'missing_grep2' must support GNU grep options (-P --only-matching --line-buffered). Set JSON_BASH_GREP to a GNU grep executable, or use the :raw type instead of :json to avoid starting a JSON validator grep process." ]]
+}
+
 @test "json validator :: reports validator grep process failing to start :: PID & FDs unset" {
   # Because it's a parallel process, the coproc failure behaviour is timing
   # dependent, making it difficult to test specific scenarios without mocking.
@@ -2854,7 +2912,7 @@ json(): Could not encode the value of argument 'a:number=oops' as a 'number' val
   run --separate-stderr json.validate '42'
   [[ $status == 2 && $output == "" ]]
   echo "$stderr"
-  [[ $stderr == *"json.bash: json validator 'grep' process failed to start: 'grep' must support GNU grep options (-P --only-matching --line-buffered). Use the :raw type instead of :json to avoid starting a JSON validator grep process."* ]]
+  [[ $stderr == "json.bash: json validator co-process failed to start: 'grep' must support GNU grep options (-P --only-matching --line-buffered). Set JSON_BASH_GREP to a GNU grep executable, or use the :raw type instead of :json to avoid starting a JSON validator grep process." ]]
 }
 
 @test "json validator :: reports validator grep process failing to start :: PID set, FDs unset" {
@@ -2866,7 +2924,7 @@ json(): Could not encode the value of argument 'a:number=oops' as a 'number' val
   run --separate-stderr json.validate '42'
   [[ $status == 2 && $output == "" ]]
   echo "$stderr"
-  [[ $stderr == *"json.bash: json validator 'grep' process failed to start: 'grep' must support GNU grep options (-P --only-matching --line-buffered). Use the :raw type instead of :json to avoid starting a JSON validator grep process."* ]]
+  [[ $stderr == "json.bash: json validator co-process failed to start: 'grep' must support GNU grep options (-P --only-matching --line-buffered). Set JSON_BASH_GREP to a GNU grep executable, or use the :raw type instead of :json to avoid starting a JSON validator grep process." ]]
 }
 
 @test "json validator :: reports validator grep process failing to start :: PID unset, FDs set" {
@@ -2878,7 +2936,7 @@ json(): Could not encode the value of argument 'a:number=oops' as a 'number' val
   run --separate-stderr json.validate '42'
   [[ $status == 2 && $output == "" ]]
   echo "$stderr"
-  [[ $stderr == "json.bash: json validator 'grep' process failed to start: 'grep' must support GNU grep options (-P --only-matching --line-buffered). Use the :raw type instead of :json to avoid starting a JSON validator grep process." ]]
+  [[ $stderr == "json.bash: json validator co-process failed to start: 'grep' must support GNU grep options (-P --only-matching --line-buffered). Set JSON_BASH_GREP to a GNU grep executable, or use the :raw type instead of :json to avoid starting a JSON validator grep process." ]]
 }
 
 @test "json validator :: reports validator grep process failing after start" {
@@ -2898,9 +2956,9 @@ json(): Could not encode the value of argument 'a:number=oops' as a 'number' val
 
   run --separate-stderr kill_coproc_then_validate
   echo "$status"
-  echo "${stderr@Q}"
+  echo "${stderr?}"
   [[ $status == 0 && $output == "" ]]
-  [[ $stderr == "json.bash: json validator coprocess unexpectedly died: 'grep' must support GNU grep options (-P --only-matching --line-buffered). Use the :raw type instead of :json to avoid starting a JSON validator grep process." ]]
+  [[ $stderr == "json.bash: json validator co-process unexpectedly died: 'grep' must support GNU grep options (-P --only-matching --line-buffered). Set JSON_BASH_GREP to a GNU grep executable, or use the :raw type instead of :json to avoid starting a JSON validator grep process." ]]
 }
 
 @test "json validator :: reports validator grep process IO write error" {
