@@ -31,11 +31,11 @@ Example: json.org https://json.org/example.html
 EOT
 printf "\njson.bash jb CLI:\n"
 
-# jb's @=/file references combined with shell process substitution allow jb
+# jb's @/file references combined with shell process substitution allow jb
 # calls to nest:
-jb menu:json@=<(
-  jb id=file value=File popup:json@=<(
-    jb menuitem:json[]@=<(
+jb menu:json@<(
+  jb id=file value=File popup:json@<(
+    jb menuitem:json[]@<(
       jb value=New onclick="CreateNewDoc()"; \
       jb value=Open onclick="OpenDoc()"; \
       jb value=Close onclick="CloseDoc()"
@@ -46,7 +46,7 @@ jb menu:json@=<(
 # Or nest jb calls with command substitution
 jb menu:json="$(
   jb id=file value=File popup:json="$(
-    jb menuitem:json[]="$(
+    jb menuitem:json[$'\n']="$(
       jb value=New onclick="CreateNewDoc()"; \
       jb value=Open onclick="OpenDoc()"; \
       jb value=Close onclick="CloseDoc()"
@@ -62,7 +62,7 @@ export menuitems=$(
 )
 # Or temporary files
 tmp=$(mktemp -d)
-jb menuitem:json[]@=menuitems > "${tmp:?}/popup"  # the filename is used as the key
+jb menuitem:json[$'\n']@menuitems > "${tmp:?}/popup"  # the filename is used as the key
 export menu=$(jb id=file value=File @"${tmp:?}"/popup:json)
 # Environment variables can be explicitly passed without exporting globally
 menu=${menu:?} jb @menu:json
@@ -92,9 +92,9 @@ Example: https://datatracker.ietf.org/doc/html/rfc8259#section-13
 EOT
 printf "\njson.bash jb CLI:\n"
 
-jb Image:json@=<(
+jb Image:json@<(
   jb Width:number=800 Height:number=600 Title="View from 15th Floor" \
-    Thumbnail:json@=<(
+    Thumbnail:json@<(
       jb url="http://www.example.com/image/481989943" height:number=125 \
       width:number=100
     ) \
