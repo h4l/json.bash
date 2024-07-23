@@ -176,6 +176,7 @@ to find where it is).
 1. [Security and correctness](#security-and-correctness)
 1. [`jb-cat`, `jb-echo`, `jb-stream` utility programs](#jb-cat-jb-echo-jb-stream-utility-programs)
 1. [Streaming output](#streaming-output)
+1. [Configuring environment variables](#configuring-environment-variables)
 
 These examples mostly use `jb`, which is the `json.bash` library run as a
 stand-alone program. From within a bash script you get better performance by
@@ -1009,6 +1010,30 @@ inputs, even when backtracking and matched-region output are disabled.
 
 The full syntax of `jb` arguments is documented in a (pseudo) grammar in
 [hack/syntax_patterns.bash](hack/syntax_patterns.bash).
+
+### Configuring environment variables
+
+`json.bash` can be configured by setting certain environment variables:
+
+#### `JSON_BASH_GREP`
+
+The command(s) to run to start the JSON validator grep co-process.
+
+Default: `ggrep:grep`
+
+`json.bash` uses a
+[regular expression to validate JSON data](./hack/syntax_patterns.bash). It uses
+a GNU grep co-process to validate lines of JSON data using this regex
+(specifically GNU grep, because it's a [PCRE] expression).
+
+This environment variable contains a list of command names or absolute paths to
+execute. Multiple commands are separated with `:`. The first command that exists
+is used, so the list can contain missing commands, so long as one exists.
+
+The default of `ggrep:grep` means `ggrep` will be used if it's available,
+otherwise `grep`.
+
+[PCRE]: https://en.wikipedia.org/wiki/Perl_Compatible_Regular_Expressions
 
 ## Background & performance notes
 
