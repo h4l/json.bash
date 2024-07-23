@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2120
+# Copyright 2023-2024 json.bash contributors. MIT license.
+#   https://github.com/h4l/json.bash
 shopt -s extglob # required to match our auto glob patterns
 
 JSON_BASH_VERSION=0.2.3-dev
