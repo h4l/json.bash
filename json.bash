@@ -4,7 +4,7 @@
 #   https://github.com/h4l/json.bash
 shopt -s extglob # required to match our auto glob patterns
 
-JSON_BASH_VERSION=0.2.3-dev
+JSON_BASH_VERSION=0.3.0
 
 declare -g -A _json_defaults=()
 

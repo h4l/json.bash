@@ -8,6 +8,10 @@ and this project adheres to
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.3.0] — 2024-07-23
+
 ### BREAKING CHANGES
 
 > [!NOTE]
@@ -47,6 +51,10 @@ and this project adheres to
     [kseistrup](https://aur.archlinux.org/account/kseistrup)
 - `--help` text uses `:json` instead of `:raw` in one of the examples
   (https://github.com/h4l/json.bash/pull/9)
+- Updated `examples/jb-cli.sh` to use the current argument syntax — it was out
+  of date.
+- `json.bash` now has a copyright/license/url comment in at the top. This should
+  make its origin clear when vendored into a downstream project as a dependency.
 
 ## [0.2.2] — 2023-08-07
 
@@ -96,6 +104,7 @@ No functional changes, `0.2.0` wasn't published because of a CI fail.
 Initial release.
 
 [unreleased]: https://github.com/h4l/json.bash/compare/v0.2.2...HEAD
+[0.3.0]: https://github.com/h4l/json.bash/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/h4l/json.bash/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/h4l/json.bash/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/h4l/json.bash/compare/v0.1.0...v0.2.0

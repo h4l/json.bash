@@ -7,7 +7,7 @@ NOW = "${timestamp()}"
 variable CI {
   default = "false"
 }
-_DEFAULT_JSON_BASH_VERSION = "0.2.3-dev"
+_DEFAULT_JSON_BASH_VERSION = "0.3.1-dev"
 variable JSON_BASH_VERSION {
   default = ""
 }
