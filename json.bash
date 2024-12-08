@@ -475,9 +475,12 @@ function json._start_grep_coproc() {
   local grep
   out=grep json._resolve_grep
 
-  { coproc json_validator ( LC_ALL=C.UTF-8 "${grep:?}" --only-matching --line-buffered \
-    -P -e "${validation_request:?}" )
-  } 2>/dev/null  # hide interactive job control PID output
+  echo "json.bash: coproc not supported in osh" >&2
+  return 10
+
+  # { coproc json_validator ( LC_ALL=C.UTF-8 "${grep:?}" --only-matching --line-buffered \
+  #   -P -e "${validation_request:?}" )
+  # } 2>/dev/null  # hide interactive job control PID output
 }
 
 function json._resolve_grep() {
@@ -1349,7 +1352,7 @@ function json() {
     unset -n {_key,_value}{,_file} _value_array;
     unset {_key,_value}{,_file} _value_array _empty_value_action _raw_key;
 
-    _type=${_attrs[type]:-${_defaults[type]:-string}}
+    _type=${_attrs['type']:-${_defaults['type']:-string}}
     _splat=${_attrs['splat']:-${_defaults['splat']:-}}
     _array_format=${_attrs['array_format']:-${_defaults['array_format']:-raw}}
     _object_format=${_attrs['object_format']:-${_defaults['object_format']:-attrs}}
@@ -1364,30 +1367,30 @@ function json() {
       _collection=${_json_return?} _attrs['collection']=${_json_return?}
     else _splat='' _collection=${_attrs['collection']:-${_defaults['collection']:-false}}; fi
     # If no value is set, provide a default
-    if [[ ! ${_attrs[val]+isset} ]]; then # arg has no value
-      case "${_type}_${_attrs[@key]:-}" in
+    if [[ ! ${_attrs['val']+isset} ]]; then # arg has no value
+      case "${_type}_${_attrs['@key']:-}" in
       (true*|false*|null*)
-        _attrs[val]=$_type  # value is the type name
-        _attrs[@val]=str
+        _attrs['val']=$_type  # value is the type name
+        _attrs['@val']=str
         if [[ $_type != null ]]; then _type=bool; fi ;;
       (*_var)
-        _attrs[val]=${_attrs[key]}  # use key ref for value ref
-        _attrs[@val]=var            # use key ref name for key
-        _attrs[@key]=str ;;
+        _attrs['val']=${_attrs['key']}  # use key ref for value ref
+        _attrs['@val']=var            # use key ref name for key
+        _attrs['@key']=str ;;
       (*_file)
-        _attrs[val]=${_attrs[key]}        # use key ref for value ref
-        _attrs[@val]=${_attrs[@key]}      # use key ref name for key
-        _attrs[key]=${_attrs[key]/#*\//}  # use the file's basename as the key
-        _attrs[@key]=str ;;
+        _attrs['val']=${_attrs['key']}        # use key ref for value ref
+        _attrs['@val']=${_attrs['@key']}      # use key ref name for key
+        _attrs['key']=${_attrs['key']/#*\//}  # use the file's basename as the key
+        _attrs['@key']=str ;;
       (*) # use inline key value as inline value
-        _attrs[val]=${_attrs[key]:-}
-        _attrs[@val]=str ;;
+        _attrs['val']=${_attrs['key']:-}
+        _attrs['@val']=str ;;
       esac
     fi
 
-    case "${_json_return}_${_attrs[@key]:-}" in
+    case "${_json_return}_${_attrs['@key']:-}" in
     (object_var)
-      local -n _key="${_attrs[key]}"
+      local -n _key="${_attrs['key']}"
       if [[ ${_key+isset} ]]; then
         if [[ ${_key@a} == *[aA]* ]]; then local -n _key_array=_key; fi
       else # distinguish arrays without [0] from unset vars, see _value below
@@ -1399,14 +1402,14 @@ function json() {
           unset _key
           # Instead of containing the content, a var can contain a filename which
           # contains the value(s).
-          if [[ ${_attrs[key]} != *']' ]]  # don't create _FILE refs for array vars
-          then local -n _key_file="${_attrs[key]}_FILE"; fi
+          if [[ ${_attrs['key']} != *']' ]]  # don't create _FILE refs for array vars
+          then local -n _key_file="${_attrs['key']}_FILE"; fi
 
           if [[ ! ${_key_file:-} =~ ^\.?/ ]]; then
             unset -n _key_file
             if [[ ${_attrs['no_key']:-${_defaults['no_key']:-}} != empty ]]; then
               json._error "json(): Could not process argument ${arg@Q}. Its key" \
-              "references unbound variable \$${_attrs[key]}. (Use the '~' flag" \
+              "references unbound variable \$${_attrs['key']}. (Use the '~' flag" \
               "before the key to treat a missing key as empty.)";
               return 3
             fi
@@ -1415,13 +1418,13 @@ function json() {
         fi
       fi
     ;;
-    (object_file) _key_file=${_attrs[key]} ;;
-    (*) _key=${_attrs[key]:-} ;;
+    (object_file) _key_file=${_attrs['key']} ;;
+    (*) _key=${_attrs['key']:-} ;;
     esac
 
-    case "${_attrs[@val]}" in
+    case "${_attrs['@val']}" in
     (var)
-      local -n _value="${_attrs[val]}"
+      local -n _value="${_attrs['val']}"
       if [[ ${_value+isset} ]]; then
         if [[ ${_value@a} == *[aA]* ]]; then local -n _value_array=_value; fi
       else
@@ -1432,14 +1435,14 @@ function json() {
           local -n _value_array=_value
         else
           unset _value # _value was not previously set
-          if [[ ${_attrs[val]} != *']' ]]  # don't create _FILE refs for array vars
-          then local -n _value_file="${_attrs[val]}_FILE"; fi
+          if [[ ${_attrs['val']} != *']' ]]  # don't create _FILE refs for array vars
+          then local -n _value_file="${_attrs['val']}_FILE"; fi
 
           if [[ ! ${_value_file:-} =~ ^\.?/ ]]; then
             unset -n _value_file
             if [[ ${_attrs['no_val']:-${_defaults['no_val']:-}} != empty ]]; then
               json._error "json(): Could not process argument ${arg@Q}. Its" \
-              "value references unbound variable \$${_attrs[val]}. (Use the" \
+              "value references unbound variable \$${_attrs['val']}. (Use the" \
               "'~' flag after the :type to treat a missing value as empty.)"
               return 3
             fi
@@ -1447,8 +1450,8 @@ function json() {
           fi
         fi
       fi ;;
-    (file) _value_file=${_attrs[val]} ;;
-    (str) _value=${_attrs[val]} ;;
+    (file) _value_file=${_attrs['val']} ;;
+    (str) _value=${_attrs['val']} ;;
     esac
 
     if [[ ${_first:?} == true ]]; then _prefix=()
@@ -1470,7 +1473,7 @@ function json() {
       action=_empty_key_action attrs=_attrs default_attrs=_defaults \
         json.resolve_empty_key_action
     elif [[ $_json_return == object \
-            && ! ( ${_splat} == true && ${_attrs[@key]:-} == '' ) \
+            && ! ( ${_splat} == true && ${_attrs['@key']:-} == '' ) \
             && ( ! ${_key:-} || ( -R _key_array && ${#_key_array} == 0 ) ) ]]; then
       action=_empty_key_action attrs=_attrs default_attrs=_defaults \
         json.resolve_empty_key_action
@@ -1554,7 +1557,7 @@ function json() {
     # Encode the value
     if [[ ${_value_file:-} ]]; then
       _status=0 _no_action=${_attrs['no_val']:-${_defaults['no_val']:-}}
-      if [[ ${_attrs[split]+isset} ]]; then _split=${_attrs[split]}
+      if [[ ${_attrs['split']+isset} ]]; then _split=${_attrs['split']}
       elif [[ ${_collection} == @(array|object) ]]; then _split=$'\n';
       else _split=''; fi
       _object_format=${_attrs['object_format']:-${_defaults['object_format']:-${_object_format:?}}}
@@ -1599,7 +1602,7 @@ function json() {
       _status=0 _encode_fn="json.encode_${_type:?}"
       if [[ ${_collection:?} == @(array|object) ]]; then
         if [[ ! -R _value_array ]]; then # if the value isn't an array, split it
-          if [[ ${_attrs[split]+isset} ]]; then _split=${_attrs[split]}
+          if [[ ${_attrs['split']+isset} ]]; then _split=${_attrs['split']}
           else _split=''; fi
           IFS=${_split}; _value_array=(${_value})  # intentional splitting
         fi
